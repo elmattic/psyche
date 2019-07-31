@@ -1,0 +1,13 @@
+[package]
+name = "psyche"
+version = "0.1.0"
+authors = ["elmattic <elmattic@users.noreply.github.com>"]
+edition = "2018"
+
+[features]
+default = []
+asm-comment = []
+
+[dependencies]
+num-traits = "0.2"
+num-derive = "0.2"
