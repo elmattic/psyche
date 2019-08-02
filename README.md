@@ -10,9 +10,9 @@
 3. Support a generic code path for best portability.
 4. Optimize for the worst-case (do not optimize average-case at the expense of
    worst-case).
-6. Hack **rustc** for better code generation for the ```loop```/```match```
+5. Hack **rustc** for better code generation for the ```loop```/```match```
    construct or guaranteed TCO.
-7. Support the EVMC low-level ABI.
+6. Support the EVMC low-level ABI or integrate in Parity Ethereum.
 
 ## Build
 
