@@ -4,16 +4,15 @@
 
 ## Project goals
 
-- Research, implement and optimize interpretation of EVM bytecode
-  in stable Rust.
-- Explore around using special CPU instructions to speed up most opcodes.
-- Support a generic code path for best portability.
-- Optimize for the worst-case scenario (do not optimize the average-case if it
-  is at the expense of the worst-case).
-- Hack **rustc** for better code generation for the ```loop```/```match```
-  construct or garanteed TCO (```become```).
-- Integrate in Parity Ethereum client to see if it helps syncing.
-- Support the EVMC low-level ABI.
+1. Research, implement and optimize interpretation of EVM bytecode
+   in stable Rust.
+2. Explore around using special CPU instructions to speed up most opcodes.
+3. Support a generic code path for best portability.
+4. Optimize for the worst-case (do not optimize average-case at the expense of
+   worst-case).
+6. Hack **rustc** for better code generation for the ```loop```/```match```
+   construct or guaranteed TCO.
+7. Support the EVMC low-level ABI.
 
 ## Build
 
