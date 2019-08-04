@@ -35,6 +35,7 @@ pub enum Instruction {
     JUMP = 0x56,
     JUMPI = 0x57,
     PC = 0x58,
+    JUMPDEST = 0x5b,
     PUSH1 = 0x60,
     PUSH2 = 0x61,
     PUSH3 = 0x62,

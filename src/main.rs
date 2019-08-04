@@ -31,6 +31,7 @@ use std::{fmt::Write, num::ParseIntError};
 use instructions::{Instruction};
 use instructions::Instruction::*;
 
+#[repr(align(32))]
 #[derive(Copy, Clone)]
 struct U256(pub [u64; 4]);
 
@@ -494,11 +495,7 @@ unsafe fn shl_u256(count: U256, value: U256) -> U256 {
     return U256([0u64; 4]);
 }
 
-const VM_STACK_SIZE: usize = 1024;
-const MAX_CODESIZE: usize = 32768;
-
-#[repr(align(32))]
-struct VmStackSlots([U256; VM_STACK_SIZE]);
+struct VmStackSlots([U256; VmStack::LEN]);
 
 struct VmStack {
     sp: *mut U256,
@@ -507,6 +504,8 @@ struct VmStack {
 }
 
 impl VmStack {
+    pub const LEN: usize = 1024;
+
     pub unsafe fn new(slots: &mut VmStackSlots) -> VmStack {
         VmStack {
             // offset of 1 is needed to streamline memory accesses
@@ -554,15 +553,15 @@ macro_rules! comment {
 }
 
 #[inline(never)]
-unsafe fn run_evm(bytecode: &[Instruction]) -> U256 {
+unsafe fn run_evm(rom: &VmRom) -> U256 {
     // TODO: use MaybeUninit
     let mut slots: VmStackSlots = std::mem::uninitialized();
     let mut stack: VmStack = VmStack::new(&mut slots);
-    let mut code: *const Instruction = bytecode.as_ptr();
+    let mut code: *const u8 = rom.code();
     loop {
-        let opcode: Instruction = *code;
-        //println!("{:?}", opcode);
-        match opcode {
+        let instr = std::mem::transmute::<u8, Instruction>(*code);
+        //println!("{:?}", instr);
+        match instr {
             STOP => {
                 break;
             },
@@ -663,11 +662,13 @@ unsafe fn run_evm(bytecode: &[Instruction]) -> U256 {
             JUMP => {
                 comment!("opJUMP");
                 let addr = stack.pop();
-                let in_bounds = is_ltpow2_u256(addr, MAX_CODESIZE);
-                if in_bounds {
-                    code = bytecode.as_ptr().offset(addr.low_u64() as isize);
+                let in_bounds = is_ltpow2_u256(addr, VmRom::MAX_CODESIZE);
+                let low = addr.low_u64();
+                if in_bounds & rom.is_jumpdest(low) {
+                    code = rom.code().offset(low as isize);
                     continue;
                 }
+                panic!("invalid jumpdest");
             }
             JUMPI => {
                 comment!("opJUMPI");
@@ -677,19 +678,25 @@ unsafe fn run_evm(bytecode: &[Instruction]) -> U256 {
                     code = code.offset(1);
                 }
                 else {
-                    let in_bounds = is_ltpow2_u256(addr, MAX_CODESIZE);
-                    if in_bounds {
-                        let offset = addr.low_u64();
-                        code = bytecode.as_ptr().offset(offset as isize);
+                    let in_bounds = is_ltpow2_u256(addr, VmRom::MAX_CODESIZE);
+                    let low = addr.low_u64();
+                    if in_bounds & rom.is_jumpdest(low) {
+                        code = rom.code().offset(low as isize);
                         continue;
                     }
+                    panic!("invalid jumpdest");
                 }
             }
             PC => {
                 comment!("opPC");
-                let result = isize::wrapping_sub(code as _, bytecode.as_ptr() as _) - 1;
+                let result = isize::wrapping_sub(code as _, rom.code() as _) - 1;
                 let result = U256::from_u64(result as u64);
                 stack.push(result);
+                //
+                code = code.offset(1);
+            }
+            JUMPDEST => {
+                comment!("opJUMPDEST");
                 //
                 code = code.offset(1);
             }
@@ -724,7 +731,7 @@ unsafe fn run_evm(bytecode: &[Instruction]) -> U256 {
             PUSH12 | PUSH13 | PUSH14 | PUSH15 | PUSH16 => {
                 comment!("opPUSH16");
                 code = code.offset(1);
-                let num_bytes = opcode.push_bytes() as i32;
+                let num_bytes = instr.push_bytes() as i32;
                 let result = load16_u256(code as *const U256, num_bytes);
                 stack.push(result);
                 //
@@ -735,7 +742,7 @@ unsafe fn run_evm(bytecode: &[Instruction]) -> U256 {
             PUSH31 | PUSH32 => {
                 comment!("opPUSH32");
                 code = code.offset(1);
-                let num_bytes = opcode.push_bytes() as i32;
+                let num_bytes = instr.push_bytes() as i32;
                 let result = load32_u256(code as *const U256, num_bytes);
                 stack.push(result);
                 //
@@ -757,7 +764,7 @@ unsafe fn run_evm(bytecode: &[Instruction]) -> U256 {
             }
             DUP3 | DUP4 => {
                 comment!("opDUPn");
-                let position = opcode.dup_position();
+                let position = instr.dup_position();
                 let result = stack.peekn(position);
                 stack.push(result);
                 //
@@ -793,46 +800,117 @@ fn decode_hex(s: &str) -> Result<Vec<u8>, ParseIntError> {
         .collect()
 }
 
-fn build_bytecode(bytes: Vec<u8>) -> Vec<Instruction> {
-    let mut bytecode = vec!();
-    bytecode.reserve(bytecode.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        match Instruction::from_u8(bytes[i]) {
-            Some(instr) => {
+struct VmRom {
+    data: [u8; VmRom::SIZE]
+}
+
+impl VmRom {
+    /// EIP-170 states a max contract code size of 2**14 + 2**13, we round it
+    /// to the next power of two.
+    const MAX_CODESIZE: usize = 32768;
+
+    const JUMPDESTS_SIZE: usize = VmRom::MAX_CODESIZE / 8;
+
+    const SIZE: usize = VmRom::MAX_CODESIZE + VmRom::JUMPDESTS_SIZE;
+
+    fn new() -> VmRom {
+        VmRom { data: [0; VmRom::SIZE] }
+    }
+
+    fn code(&self) -> *const u8 {
+        self.data.as_ptr()
+    }
+
+    fn is_jumpdest(&self, addr: u64) -> bool {
+        let jump_dests = unsafe {
+            self.data.as_ptr().offset(VmRom::MAX_CODESIZE as isize) as *mut u64
+        };
+        let offset = (addr % (VmRom::MAX_CODESIZE as u64)) as isize;
+        let bits = unsafe { *jump_dests.offset(offset / 64) };
+        let mask = 1u64 << (offset % 64);
+        (bits & mask) != 0
+    }
+
+    fn swap_bytes(input: &[u8], swapped: &mut[u8]) {
+        for i in 0..input.len() {
+            swapped[input.len()-1-i] = input[i];
+        }
+    }
+
+    fn init(&mut self, bytecode: &[u8]) {
+        // erase rom
+        for b in &mut self.data[..] {
+            *b = 0;
+        }
+        // copy bytecode
+        #[cfg(target_endian = "little")]
+        {
+            // reverse `PUSHN` opcode bytes
+            let mut i: usize = 0;
+            while i < bytecode.len() {
+                let code = bytecode[i];
+                self.data[i] = code;
+                let instr = unsafe {
+                    std::mem::transmute::<u8, Instruction>(code)
+                };
                 if instr.is_push() {
-                    let mut buffer: [u8; 32] = [0; 32];
-                    let num_bytes = instr.push_bytes() as usize;
-                    let mut j = 0;
-                    while j < num_bytes {
-                        buffer[j] = bytes[i+num_bytes-j];
-                        j += 1;
-                    }
-                    //
-                    bytecode.push(instr);
-                    j = 0;
-                    while j < num_bytes {
-                        let f: Instruction = unsafe {
-                            std::mem::transmute::<u8, Instruction>(buffer[j])
-                        };
-                        bytecode.push(f);
-                        j += 1;
-                    }
+                    let num_bytes = instr.push_bytes();
+                    let start = i + 1;
+                    let end = start + num_bytes;
+                    let dest = &mut self.data[start..end];
+                    VmRom::swap_bytes(&bytecode[start..end], dest);
                     i += 1 + num_bytes;
                 }
                 else {
-                    bytecode.push(instr);
                     i += 1;
                 }
             }
-            None => bytecode.push(Instruction::INVALID)
+        }
+        #[cfg(target_endian = "big")]
+        {
+            let mut i: usize = 0;
+            while i < bytecode.len() {
+                self.data[i] = bytecode[i];
+                i += i;
+            }
+        }
+        // write valid jump destinations
+        let jump_dests_offset = VmRom::MAX_CODESIZE as isize;
+        let jump_dests = unsafe {
+            self.data.as_mut_ptr().offset(jump_dests_offset) as *mut u64
+        };
+        let mut bits: u64 = 0;
+        let mut i: usize = 0;
+        while i < bytecode.len() {
+            // save i for later in j
+            let j = i;
+            let code = bytecode[i];
+            let instr = unsafe {
+                std::mem::transmute::<u8, Instruction>(code)
+            };
+            if instr.is_push() {
+                i += 1 + instr.push_bytes();
+            }
+            else {
+                if instr == JUMPDEST {
+                    bits |= 1u64 << (i % 64);
+                }
+                i += 1;
+            }
+            let do_write = (j % 64) > (i % 64);
+            if do_write {
+                let offset = (j / 64) as isize;
+                unsafe {
+                    *jump_dests.offset(offset) = bits
+                }
+                bits = 0;
+            }
+        }
+        let offset = (i / 64) as isize;
+        unsafe {
+            *jump_dests.offset(offset) = bits
         }
     }
-    // Pad with 15 STOP instructions
-    for _ in 0..15 {
-        bytecode.push(Instruction::STOP)
-    }
-    bytecode
 }
 
 pub fn encode_hex(bytes: &[u8]) -> String {
@@ -872,9 +950,10 @@ fn main() {
         match temp {
             Ok(bytes) => {
                 println!("{} bytes", bytes.len());
-                let bytecode = build_bytecode(bytes);
+                let mut rom = VmRom::new();
+                rom.init(&bytes);
                 let result: U256 = unsafe {
-                    run_evm(&bytecode)
+                    run_evm(&rom)
                 };
                 println!("0x{:016x}{:016x}{:016x}{:016x}",
                     result.0[3],
