@@ -762,7 +762,8 @@ unsafe fn run_evm(rom: &VmRom) -> U256 {
                 //
                 code = code.offset(1);
             }
-            DUP3 | DUP4 => {
+            DUP3 | DUP4 | DUP5 | DUP6 | DUP7 | DUP8 | DUP9 | DUP10 | DUP11 |
+            DUP12 | DUP13 | DUP14 | DUP15 | DUP16 => {
                 comment!("opDUPn");
                 let position = instr.dup_position();
                 let result = stack.peekn(position);
