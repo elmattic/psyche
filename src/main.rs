@@ -73,6 +73,23 @@ unsafe fn load_u256(src: *const U256, offset: isize) -> U256 {
 }
 
 #[allow(unreachable_code)]
+unsafe fn loadu_u256(src: *const U256, offset: isize) -> U256 {
+    #[cfg(target_feature = "avx2")]
+    {
+        let src = src.offset(offset) as *const __m256i;
+        let result = _mm256_loadu_si256(src);
+        return std::mem::transmute::<__m256i, U256>(result);
+    }
+    #[cfg(target_feature = "ssse3")]
+    {
+        let src = src.offset(offset) as *const __m128i;
+        let result = (_mm_loadu_si128(src), _mm_loadu_si128(src.offset(1)));
+        return std::mem::transmute::<(__m128i, __m128i), U256>(result);
+    }
+    return *src;
+}
+
+#[allow(unreachable_code)]
 unsafe fn store_u256(dest: *mut U256, value: U256, offset: isize) {
     #[cfg(target_feature = "avx2")]
     {
@@ -87,6 +104,26 @@ unsafe fn store_u256(dest: *mut U256, value: U256, offset: isize) {
         let dest = dest.offset(offset) as *mut __m128i;
         _mm_store_si128(dest, value.0);
         _mm_store_si128(dest.offset(1), value.1);
+        return;
+    }
+    *dest = value;
+}
+
+#[allow(unreachable_code)]
+unsafe fn storeu_u256(dest: *mut U256, value: U256, offset: isize) {
+    #[cfg(target_feature = "avx2")]
+    {
+        let value = std::mem::transmute::<U256, __m256i>(value);
+        let dest = dest.offset(offset) as *mut __m256i;
+        _mm256_storeu_si256(dest, value);
+        return;
+    }
+    #[cfg(target_feature = "ssse3")]
+    {
+        let value = std::mem::transmute::<U256, (__m128i, __m128i)>(value);
+        let dest = dest.offset(offset) as *mut __m128i;
+        _mm_storeu_si128(dest, value.0);
+        _mm_storeu_si128(dest.offset(1), value.1);
         return;
     }
     *dest = value;
@@ -543,6 +580,63 @@ impl VmStack {
     }
 }
 
+struct VmMemory {
+    ptr: *mut u8,
+    len: usize
+}
+
+impl VmMemory {
+    fn new() -> VmMemory {
+        VmMemory {
+            ptr: std::ptr::null_mut(),
+            len: 0
+        }
+    }
+
+    fn init(&mut self, gas: u64) {
+        // TODO: compute worst-case capacity base on gas limit
+        let max_len = 65536;
+        let capacity = max_len * 32;
+        let layout = std::alloc::Layout::from_size_align(capacity, 32);
+        match layout {
+            Ok(layout) => {
+                self.ptr = unsafe { std::alloc::alloc_zeroed(layout) };
+            },
+            Err(e) => panic!(e)
+        }
+    }
+
+    fn size(&self) -> usize {
+        self.len * std::mem::size_of::<U256>()
+    }
+
+    fn extend(&mut self, offset: usize, size: usize) {
+        let len = self.len;
+        let new_len = (offset + size + 31) / 32;
+        self.len = if new_len > len { new_len } else { len };
+        self.len = if size == 0 { len } else { self.len };
+    }
+
+    unsafe fn read(&mut self, offset: usize) -> U256 {
+        self.extend(offset, 32);
+        let src = self.ptr.offset(offset as isize);
+        let result = bswap_u256(loadu_u256(src as *const U256, 0));
+        return result;
+    }
+
+    unsafe fn write(&mut self, offset: usize, value: U256) {
+        self.extend(offset, 32);
+        let dest = self.ptr.offset(offset as isize);
+        storeu_u256(dest as *mut U256, bswap_u256(value), 0);
+    }
+
+    unsafe fn write_byte(&mut self, offset: usize, value: u8) {
+        self.extend(offset, 1);
+        let dest = self.ptr.offset(offset as isize);
+        *dest = value;
+    }
+}
+
 macro_rules! comment {
    ($lit:literal) => (
         #[cfg(feature = "asm-comment")]
@@ -552,8 +646,7 @@ macro_rules! comment {
     )
 }
 
-#[inline(never)]
-unsafe fn run_evm(rom: &VmRom) -> U256 {
+unsafe fn run_evm(rom: &VmRom, memory: &mut VmMemory) -> U256 {
     // TODO: use MaybeUninit
     let mut slots: VmStackSlots = std::mem::uninitialized();
     let mut stack: VmStack = VmStack::new(&mut slots);
@@ -659,6 +752,30 @@ unsafe fn run_evm(rom: &VmRom) -> U256 {
                 //
                 code = code.offset(1);
             }
+            MLOAD => {
+                comment!("opMLOAD");
+                let offset = stack.pop().low_u64();
+                let result = memory.read(offset as usize);
+                stack.push(result);
+                //
+                code = code.offset(1);
+            },
+            MSTORE => {
+                comment!("opMSTORE");
+                let offset = stack.pop().low_u64();
+                let value = stack.pop();
+                memory.write(offset as usize, value);
+                //
+                code = code.offset(1);
+            },
+            MSTORE8 => {
+                comment!("opMSTORE8");
+                let offset = stack.pop().low_u64();
+                let value = stack.pop().low_u64();
+                memory.write_byte(offset as usize, value as u8);
+                //
+                code = code.offset(1);
+            },
             JUMP => {
                 comment!("opJUMP");
                 let addr = stack.pop();
@@ -691,6 +808,13 @@ unsafe fn run_evm(rom: &VmRom) -> U256 {
                 comment!("opPC");
                 let result = isize::wrapping_sub(code as _, rom.code() as _) - 1;
                 let result = U256::from_u64(result as u64);
+                stack.push(result);
+                //
+                code = code.offset(1);
+            }
+            MSIZE => {
+                comment!("opMSIZE");
+                let result = U256::from_u64(memory.size() as u64);
                 stack.push(result);
                 //
                 code = code.offset(1);
@@ -944,6 +1068,8 @@ fn print_config() {
     }
 }
 
+const VM_DEFAULT_GAS: u64 = 20_000_000_000_000;
+
 fn main() {
     print_config();
     if let Some(arg1) = env::args().nth(1) {
@@ -953,9 +1079,9 @@ fn main() {
                 println!("{} bytes", bytes.len());
                 let mut rom = VmRom::new();
                 rom.init(&bytes);
-                let result: U256 = unsafe {
-                    run_evm(&rom)
-                };
+                let mut memory = VmMemory::new();
+                memory.init(VM_DEFAULT_GAS);
+                let result: U256 = unsafe { run_evm(&rom, &mut memory) };
                 println!("0x{:016x}{:016x}{:016x}{:016x}",
                     result.0[3],
                     result.0[2],
