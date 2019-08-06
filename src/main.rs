@@ -560,9 +560,17 @@ fn overflowing_sub_u256(a: U256, b: U256) -> (U256, bool) {
     (U256([lo as u64, (lo >> 64) as u64, hi as u64, (hi >> 64) as u64]), borrow)
 }
 
-unsafe fn sub_u256(a: U256, b: U256) -> U256 {
+fn sub_u256(a: U256, b: U256) -> U256 {
     let (value, _) = overflowing_sub_u256(a, b);
     value
+}
+
+fn gt_u256(a: U256, b: U256) -> bool {
+    let alo = ((a.0[1] as u128) << 64) | (a.0[0] as u128);
+    let blo = ((b.0[1] as u128) << 64) | (b.0[0] as u128);
+    let ahi = ((a.0[3] as u128) << 64) | (a.0[2] as u128);
+    let bhi = ((b.0[3] as u128) << 64) | (b.0[2] as u128);
+    (ahi > bhi) | ((ahi == bhi) & (alo > blo))
 }
 
 struct VmStackSlots([U256; VmStack::LEN]);
@@ -728,6 +736,15 @@ unsafe fn run_evm(rom: &VmRom, memory: &mut VmMemory) -> U256 {
                 //
                 code = code.offset(1);
             }
+            GT => {
+                comment!("opGT");
+                let a = stack.pop();
+                let b = stack.pop();
+                let result = U256::from_u64(gt_u256(a, b) as u64);
+                stack.push(result);
+                //
+                code = code.offset(1);
+            }
             EQ => {
                 comment!("opEQ");
                 let a = stack.pop();
@@ -788,7 +805,7 @@ unsafe fn run_evm(rom: &VmRom, memory: &mut VmMemory) -> U256 {
                 let offset = offset as isize;
                 let value = *((stack.sp.offset(-1) as *const u8).offset(offset));
                 let value = value as u64;
-                let result = U256 { 0: [(lt32 as u64) * value, 0, 0, 0] };
+                let result = U256::from_u64((lt32 as u64) * value);
                 stack.pop();
                 stack.pop();
                 stack.push(result);

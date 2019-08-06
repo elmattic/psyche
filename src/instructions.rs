@@ -25,6 +25,7 @@ pub enum Instruction {
     ADD = 0x01,
     SUB = 0x03,
     SIGNEXTEND = 0x0b,
+    GT = 0x11,
     EQ = 0x14,
     ISZERO = 0x15,
     AND = 0x16,
