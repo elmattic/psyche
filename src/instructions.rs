@@ -89,7 +89,22 @@ pub enum Instruction {
     DUP15 = 0x8e,
     DUP16 = 0x8f,
     SWAP1 = 0x90,
-    INVALID = 0x92
+    SWAP2 = 0x91,
+    SWAP3 = 0x92,
+    SWAP4 = 0x93,
+    SWAP5 = 0x94,
+    SWAP6 = 0x95,
+    SWAP7 = 0x96,
+    SWAP8 = 0x97,
+    SWAP9 = 0x98,
+    SWAP10 = 0x99,
+    SWAP11 = 0x9a,
+    SWAP12 = 0x9b,
+    SWAP13 = 0x9c,
+    SWAP14 = 0x9d,
+    SWAP15 = 0x9e,
+    SWAP16 = 0x9f,
+    INVALID = 0xfe
 }
 
 impl Instruction {

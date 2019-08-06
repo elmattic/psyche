@@ -578,6 +578,13 @@ impl VmStack {
     pub unsafe fn peekn(&self, position: usize) -> U256 {
         return load_u256(self.sp, -(position as isize));
     }
+
+    pub unsafe fn set(&self, position: usize, value: U256) -> U256 {
+        let offset = -(position as isize);
+        let temp = load_u256(self.sp, offset);
+        store_u256(self.sp, value, offset);
+        return temp;
+    }
 }
 
 struct VmMemory {
@@ -901,6 +908,26 @@ unsafe fn run_evm(rom: &VmRom, memory: &mut VmMemory) -> U256 {
                 let b = stack.pop();
                 stack.push(a);
                 stack.push(b);
+                //
+                code = code.offset(1);
+            }
+            SWAP2 => {
+                comment!("opSWAP2");
+                let a = stack.peek();
+                let result = stack.set(2, a);
+                stack.pop();
+                stack.push(result);
+                //
+                code = code.offset(1);
+            }
+            SWAP3 | SWAP4 | SWAP5 | SWAP6 | SWAP7 | SWAP8 | SWAP9 | SWAP10 |
+            SWAP11 | SWAP12 | SWAP13 | SWAP14 | SWAP15 | SWAP16 => {
+                comment!("opSWAPn");
+                let a = stack.peek();
+                let position = instr.swap_position();
+                let result = stack.set(position, a);
+                stack.pop();
+                stack.push(result);
                 //
                 code = code.offset(1);
             }
