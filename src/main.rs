@@ -532,28 +532,37 @@ unsafe fn shl_u256(count: U256, value: U256) -> U256 {
     return U256([0u64; 4]);
 }
 
-struct U256Result {
-    value: U256,
-    overflow: bool
-}
-
-fn overflowing_add_u256(a: U256, b: U256) -> U256Result {
-    let t0 = a.0[0] as u128 + b.0[0] as u128;
+fn overflowing_add_u256(a: U256, b: U256) -> (U256, bool) {
+    let t0 = (a.0[0] as u128) + (b.0[0] as u128);
     let c0 = t0 >> 64;
-    let t1 = a.0[1] as u128 + b.0[1] as u128 + c0;
+    let t1 = (a.0[1] as u128) + (b.0[1] as u128) + c0;
     let c1 = t1 >> 64;
-    let t2 = a.0[2] as u128 + b.0[2] as u128 + c1;
+    let t2 = (a.0[2] as u128) + (b.0[2] as u128) + c1;
     let c2 = t2 >> 64;
-    let t3 = a.0[3] as u128 + b.0[3] as u128 + c2;
+    let t3 = (a.0[3] as u128) + (b.0[3] as u128) + c2;
     let c3 = t3 >> 64;
-    U256Result {
-        value: U256([t0 as u64, t1 as u64, t2 as u64, t3 as u64]),
-        overflow: c3 != 0
-    }
+    (U256([t0 as u64, t1 as u64, t2 as u64, t3 as u64]), c3 != 0)
 }
 
 fn add_u256(a: U256, b: U256) -> U256 {
-    overflowing_add_u256(a, b).value
+    let (value, _) = overflowing_add_u256(a, b);
+    value
+}
+
+fn overflowing_sub_u256(a: U256, b: U256) -> (U256, bool) {
+    let alo = ((a.0[1] as u128) << 64) | (a.0[0] as u128);
+    let blo = ((b.0[1] as u128) << 64) | (b.0[0] as u128);
+    let ahi = ((a.0[3] as u128) << 64) | (a.0[2] as u128);
+    let bhi = ((b.0[3] as u128) << 64) | (b.0[2] as u128);
+    let (lo, borrowlo) = alo.overflowing_sub(blo);
+    let hi = ahi.wrapping_sub(bhi).wrapping_sub(borrowlo as u128);
+    let borrow = (ahi < bhi) | ((ahi == bhi) & borrowlo);
+    (U256([lo as u64, (lo >> 64) as u64, hi as u64, (hi >> 64) as u64]), borrow)
+}
+
+unsafe fn sub_u256(a: U256, b: U256) -> U256 {
+    let (value, _) = overflowing_sub_u256(a, b);
+    value
 }
 
 struct VmStackSlots([U256; VmStack::LEN]);
@@ -694,6 +703,15 @@ unsafe fn run_evm(rom: &VmRom, memory: &mut VmMemory) -> U256 {
                 let a = stack.pop();
                 let b = stack.pop();
                 let result = add_u256(a, b);
+                stack.push(result);
+                //
+                code = code.offset(1);
+            }
+            SUB => {
+                comment!("opSUB");
+                let a = stack.pop();
+                let b = stack.pop();
+                let result = sub_u256(a, b);
                 stack.push(result);
                 //
                 code = code.offset(1);
