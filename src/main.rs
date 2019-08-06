@@ -532,6 +532,30 @@ unsafe fn shl_u256(count: U256, value: U256) -> U256 {
     return U256([0u64; 4]);
 }
 
+struct U256Result {
+    value: U256,
+    overflow: bool
+}
+
+fn overflowing_add_u256(a: U256, b: U256) -> U256Result {
+    let t0 = a.0[0] as u128 + b.0[0] as u128;
+    let c0 = t0 >> 64;
+    let t1 = a.0[1] as u128 + b.0[1] as u128 + c0;
+    let c1 = t1 >> 64;
+    let t2 = a.0[2] as u128 + b.0[2] as u128 + c1;
+    let c2 = t2 >> 64;
+    let t3 = a.0[3] as u128 + b.0[3] as u128 + c2;
+    let c3 = t3 >> 64;
+    U256Result {
+        value: U256([t0 as u64, t1 as u64, t2 as u64, t3 as u64]),
+        overflow: c3 != 0
+    }
+}
+
+fn add_u256(a: U256, b: U256) -> U256 {
+    overflowing_add_u256(a, b).value
+}
+
 struct VmStackSlots([U256; VmStack::LEN]);
 
 struct VmStack {
@@ -665,6 +689,15 @@ unsafe fn run_evm(rom: &VmRom, memory: &mut VmMemory) -> U256 {
             STOP => {
                 break;
             },
+            ADD => {
+                comment!("opADD");
+                let a = stack.pop();
+                let b = stack.pop();
+                let result = add_u256(a, b);
+                stack.push(result);
+                //
+                code = code.offset(1);
+            }
             SIGNEXTEND => {
                 comment!("opSIGNEXTEND");
                 let offset = *(stack.sp as *const u32) % 32;

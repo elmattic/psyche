@@ -22,6 +22,7 @@ pub use self::Instruction::*;
 #[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Copy, Clone, FromPrimitive)]
 pub enum Instruction {
     STOP = 0x00,
+    ADD = 0x01,
     SIGNEXTEND = 0x0b,
     EQ = 0x14,
     ISZERO = 0x15,
