@@ -549,6 +549,73 @@ fn add_u256(a: U256, b: U256) -> U256 {
     value
 }
 
+fn mul_diag(num_limbs: usize, i: usize, a: &[u64], b: u64, r: &mut [u64], c: &mut [u64]) {
+    let mut carry: u64 = 0;
+    for j in 0..num_limbs {
+        let temp = (a[j] as u128) * (b as u128);
+        if j == 0 {
+            c[i] = temp as u64;
+            carry = (temp >> 64) as u64;
+        }
+        else {
+            let temp2 = temp + (carry as u128);
+            if j == (num_limbs - 1) {
+                r[j-1] = temp2 as u64;
+                r[j-0] = (temp2 >> 64) as u64;
+            }
+            else {
+                r[j-1] = temp2 as u64;
+                carry = (temp2 >> 64) as u64;
+            }
+        }
+    }
+}
+
+fn mul_diagc(num_limbs: usize, i: usize, a: &[u64], b: u64, r: &mut [u64], rp: &mut [u64], c: &mut [u64]) {
+    let mut carry: u64 = 0;
+    for j in 0..num_limbs {
+        let temp = (a[j] as u128) * (b as u128) + (r[j] as u128);
+        if j == 0 {
+            c[i] = temp as u64;
+            carry = (temp >> 64) as u64;
+        }
+        else {
+            let temp2 = temp + (carry as u128);
+            if j == (num_limbs - 1) {
+                rp[j-1] = temp2 as u64;
+                rp[j-0] = (temp2 >> 64) as u64;
+            }
+            else {
+                rp[j-1] = temp2 as u64;
+                carry = (temp2 >> 64) as u64;
+            }
+        }
+    }
+}
+
+fn mul_limbs(num_limbs: usize, a: &[u64], b: &[u64], c: &mut [u64]) {
+    assert!(num_limbs <= 4);
+    let mut r: [u64; 8] = unsafe { std::mem::uninitialized() };
+    let mut rp: [u64; 8] = unsafe { std::mem::uninitialized() };
+    //
+    mul_diag(num_limbs, 0, a, b[0], &mut r, c);
+    for i in 1..num_limbs {
+        mul_diagc(num_limbs, i, a, b[i], &mut r, &mut rp, c);
+        for j in 0..num_limbs {
+            r[j] = rp[j];
+        }
+    }
+    for i in 0..num_limbs {
+        c[num_limbs+i] = rp[i];
+    }
+}
+
+fn mul_u256(a: U256, b: U256) -> U256 {
+    let mut c: [u64; 8] = unsafe { std::mem::uninitialized() };
+    mul_limbs(4, &a.0, &b.0, &mut c);
+    U256([c[0], c[1], c[2], c[3]])
+}
+
 fn overflowing_sub_u256(a: U256, b: U256) -> (U256, bool) {
     let alo = ((a.0[1] as u128) << 64) | (a.0[0] as u128);
     let blo = ((b.0[1] as u128) << 64) | (b.0[0] as u128);
@@ -711,6 +778,15 @@ unsafe fn run_evm(rom: &VmRom, memory: &mut VmMemory) -> U256 {
                 let a = stack.pop();
                 let b = stack.pop();
                 let result = add_u256(a, b);
+                stack.push(result);
+                //
+                code = code.offset(1);
+            }
+            MUL => {
+                comment!("opMUL");
+                let a = stack.pop();
+                let b = stack.pop();
+                let result = mul_u256(a, b);
                 stack.push(result);
                 //
                 code = code.offset(1);

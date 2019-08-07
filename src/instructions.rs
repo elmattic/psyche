@@ -23,6 +23,7 @@ pub use self::Instruction::*;
 pub enum Instruction {
     STOP = 0x00,
     ADD = 0x01,
+    MUL = 0x02,
     SUB = 0x03,
     SIGNEXTEND = 0x0b,
     GT = 0x11,
