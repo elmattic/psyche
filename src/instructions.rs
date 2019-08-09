@@ -109,6 +109,7 @@ pub enum Instruction {
     SWAP14 = 0x9d,
     SWAP15 = 0x9e,
     SWAP16 = 0x9f,
+    RETURN = 0xf3,
     INVALID = 0xfe
 }
 

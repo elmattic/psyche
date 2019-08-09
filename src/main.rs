@@ -742,6 +742,10 @@ impl VmMemory {
         let dest = self.ptr.offset(offset as isize);
         *dest = value;
     }
+
+    unsafe fn slice(&self, offset: isize, size: usize) -> &[u8] {
+        std::slice::from_raw_parts(self.ptr.offset(offset), size)
+    }
 }
 
 macro_rules! comment {
@@ -753,7 +757,24 @@ macro_rules! comment {
     )
 }
 
-unsafe fn run_evm(rom: &VmRom, memory: &mut VmMemory) -> U256 {
+#[derive(Debug)]
+pub struct ReturnData {
+    offset: usize,
+    size: usize,
+    gas: u64
+}
+
+impl ReturnData {
+    pub fn new(offset: usize, size: usize, gas: u64) -> Self {
+        ReturnData {
+            offset: offset,
+            size: size,
+            gas: gas
+        }
+    }
+}
+
+unsafe fn run_evm(rom: &VmRom, memory: &mut VmMemory) -> ReturnData {
     // TODO: use MaybeUninit
     let mut slots: VmStackSlots = std::mem::uninitialized();
     let mut stack: VmStack = VmStack::new(&mut slots);
@@ -1074,12 +1095,20 @@ unsafe fn run_evm(rom: &VmRom, memory: &mut VmMemory) -> U256 {
                 //
                 code = code.offset(1);
             }
+            RETURN => {
+                comment!("opRETURN");
+                let offset = stack.pop();
+                let size = stack.pop();
+                let offset = offset.low_u64() as usize;
+                let size = size.low_u64() as usize;
+                return ReturnData::new(offset, size, 0)
+            }
             INVALID => {
                 break;
             }
         }
     }
-    return stack.pop();
+    ReturnData::new(0, 0, 0)
 }
 
 fn decode_hex(s: &str) -> Result<Vec<u8>, ParseIntError> {
@@ -1251,12 +1280,15 @@ fn main() {
                 rom.init(&bytes);
                 let mut memory = VmMemory::new();
                 memory.init(VM_DEFAULT_GAS);
-                let result: U256 = unsafe { run_evm(&rom, &mut memory) };
-                println!("0x{:016x}{:016x}{:016x}{:016x}",
-                    result.0[3],
-                    result.0[2],
-                    result.0[1],
-                    result.0[0]);
+                let slice = unsafe {
+                    let ret_data = run_evm(&rom, &mut memory);
+                    memory.slice(ret_data.offset as isize, ret_data.size)
+                };
+                let mut buffer = String::new();
+                for byte in slice {
+                    let _ = write!(buffer, "{:02x}", byte);
+                }
+                println!("0x{:}", buffer);
             },
             Err(e) => println!("{:?}", e)
         };
