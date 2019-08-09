@@ -702,12 +702,12 @@ impl VmMemory {
 
     fn init(&mut self, gas: u64) {
         // TODO: compute worst-case capacity base on gas limit
-        let max_len = 65536;
+        let max_len = 536870912; // 512M
         let capacity = max_len * 32;
         let layout = std::alloc::Layout::from_size_align(capacity, 32);
         match layout {
             Ok(layout) => {
-                self.ptr = unsafe { std::alloc::alloc_zeroed(layout) };
+                self.ptr = unsafe { std::alloc::alloc(layout) };
             },
             Err(e) => panic!(e)
         }
