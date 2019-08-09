@@ -643,9 +643,7 @@ fn gt_u256(a: U256, b: U256) -> bool {
 struct VmStackSlots([U256; VmStack::LEN]);
 
 struct VmStack {
-    sp: *mut U256,
-    st0: U256,
-    st1: U256
+    sp: *mut U256
 }
 
 impl VmStack {
@@ -653,45 +651,39 @@ impl VmStack {
 
     pub unsafe fn new(slots: &mut VmStackSlots) -> VmStack {
         VmStack {
-            // offset of 1 is needed to streamline memory accesses
-            sp: slots.0.as_mut_ptr().offset(1),
-            st0: U256([0u64; 4]),
-            st1: U256([0u64; 4])
+            // sp is always pointing at the top of the stack
+            sp: slots.0.as_mut_ptr().offset(-1)
         }
     }
 
     pub unsafe fn push(&mut self, value: U256) {
-        store_u256(self.sp, self.st1, -1);
         self.sp = self.sp.offset(1);
-        self.st1 = self.st0;
-        self.st0 = value;
+        store_u256(self.sp, value, 0);
     }
 
     pub unsafe fn pop(&mut self) -> U256 {
-        let result = self.st0;
+        let temp = self.peek();
         self.sp = self.sp.offset(-1);
-        self.st0 = self.st1;
-        self.st1 = load_u256(self.sp, -1);
-        return result;
+        temp
     }
 
     pub unsafe fn peek(&self) -> U256 {
-        return self.st0;
+        self.peekn(0)
     }
 
     pub unsafe fn peek1(&self) -> U256 {
-        return self.st1;
+        self.peekn(1)
     }
 
-    pub unsafe fn peekn(&self, position: usize) -> U256 {
-        return load_u256(self.sp, -(position as isize));
+    pub unsafe fn peekn(&self, index: usize) -> U256 {
+        load_u256(self.sp, -(index as isize))
     }
 
-    pub unsafe fn set(&self, position: usize, value: U256) -> U256 {
-        let offset = -(position as isize);
+    pub unsafe fn set(&self, index: usize, value: U256) -> U256 {
+        let offset = -(index as isize);
         let temp = load_u256(self.sp, offset);
         store_u256(self.sp, value, offset);
-        return temp;
+        temp
     }
 }
 
@@ -1040,8 +1032,8 @@ unsafe fn run_evm(rom: &VmRom, memory: &mut VmMemory) -> U256 {
             DUP3 | DUP4 | DUP5 | DUP6 | DUP7 | DUP8 | DUP9 | DUP10 | DUP11 |
             DUP12 | DUP13 | DUP14 | DUP15 | DUP16 => {
                 comment!("opDUPn");
-                let position = instr.dup_position();
-                let result = stack.peekn(position);
+                let index = instr.dup_index();
+                let result = stack.peekn(index);
                 stack.push(result);
                 //
                 code = code.offset(1);
@@ -1057,21 +1049,21 @@ unsafe fn run_evm(rom: &VmRom, memory: &mut VmMemory) -> U256 {
             }
             SWAP2 => {
                 comment!("opSWAP2");
-                let a = stack.peek();
-                let result = stack.set(2, a);
+                let value = stack.peek();
+                let prev = stack.set(2, value);
                 stack.pop();
-                stack.push(result);
+                stack.push(prev);
                 //
                 code = code.offset(1);
             }
             SWAP3 | SWAP4 | SWAP5 | SWAP6 | SWAP7 | SWAP8 | SWAP9 | SWAP10 |
             SWAP11 | SWAP12 | SWAP13 | SWAP14 | SWAP15 | SWAP16 => {
                 comment!("opSWAPn");
-                let a = stack.peek();
-                let position = instr.swap_position();
-                let result = stack.set(position, a);
+                let value = stack.peek();
+                let index = instr.swap_index();
+                let prev = stack.set(index, value);
                 stack.pop();
-                stack.push(result);
+                stack.push(prev);
                 //
                 code = code.offset(1);
             }

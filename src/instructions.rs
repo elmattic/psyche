@@ -124,15 +124,15 @@ impl Instruction {
         ((*self as u8) - (PUSH1 as u8) + 1) as usize
     }
 
-    /// Returns stack position of item to duplicate
+    /// Returns the index of the DUP opcode
     /// DUP1 -> 0
-    pub fn dup_position(&self) -> usize {
+    pub fn dup_index(&self) -> usize {
         ((*self as u8) - (DUP1 as u8)) as usize
     }
 
-    /// Returns stack position of item to SWAP top with
-    /// SWAP1 -> 1
-    pub fn swap_position(&self) -> usize {
-        ((*self as u8) - (SWAP1 as u8) + 1) as usize
+    /// Returns the index of the SWAP opcode
+    /// SWAP1 -> 0
+    pub fn swap_index(&self) -> usize {
+        ((*self as u8) - (SWAP1 as u8)) as usize
     }
 }
