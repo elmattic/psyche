@@ -962,6 +962,13 @@ unsafe fn run_evm(rom: &VmRom, memory: &mut VmMemory) -> U256 {
                 //
                 code = code.offset(1);
             }
+            GAS => {
+                comment!("opGAS");
+                let result = U256::from_u64(0);
+                stack.push(result);
+                //
+                code = code.offset(1);
+            }
             JUMPDEST => {
                 comment!("opJUMPDEST");
                 //

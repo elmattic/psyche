@@ -43,6 +43,7 @@ pub enum Instruction {
     JUMPI = 0x57,
     PC = 0x58,
     MSIZE = 0x59,
+    GAS = 0x5a,
     JUMPDEST = 0x5b,
     PUSH1 = 0x60,
     PUSH2 = 0x61,
