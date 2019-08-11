@@ -1284,7 +1284,7 @@ fn main() {
                     let ret_data = run_evm(&rom, &mut memory);
                     memory.slice(ret_data.offset as isize, ret_data.size)
                 };
-                let mut buffer = String::new();
+                let mut buffer = String::with_capacity(512);
                 for byte in slice {
                     let _ = write!(buffer, "{:02x}", byte);
                 }
