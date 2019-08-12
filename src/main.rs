@@ -28,7 +28,7 @@ use std::arch::x86_64::*;
 use num_traits::FromPrimitive;
 use std::env;
 use std::{fmt::Write, num::ParseIntError};
-use instructions::{Instruction};
+use instructions::{EvmInstruction, Instruction};
 use instructions::Instruction::*;
 
 #[repr(align(32))]
@@ -158,7 +158,7 @@ unsafe fn load16_u256(src: *const U256, num_bytes: i32) -> U256 {
         let mask = _mm_cmpeq_epi8(ssum, all_ones);
         return std::mem::transmute::<(__m128i, __m128i), U256>((_mm_and_si128(value, mask), zero));
     }
-    return U256([0u64; 4]);
+    unimplemented!()
 }
 
 #[allow(unreachable_code)]
@@ -190,7 +190,7 @@ unsafe fn load32_u256(src: *const U256, num_bytes: i32) -> U256 {
         let mask = _mm_cmpeq_epi8(ssum, all_ones);
         return std::mem::transmute::<(__m128i, __m128i), U256>((valuelo, _mm_and_si128(valuehi, mask)));
     }
-    return U256([0u64; 4]);
+    unimplemented!()
 }
 
 #[allow(unreachable_code)]
@@ -214,7 +214,7 @@ unsafe fn bswap_u256(value: U256) -> U256 {
         let resulthi = _mm_shuffle_epi8(value.0, lane8_id);
         return std::mem::transmute::<(__m128i, __m128i), U256>((resultlo, resulthi));
     }
-    return U256([0u64; 4]);
+    unimplemented!()
 }
 
 #[allow(unreachable_code)]
@@ -237,7 +237,7 @@ unsafe fn is_zero_u256(value: U256) -> bool {
         let mask16 = _mm_movemask_epi8(_mm_and_si128(masklo, maskhi));
         return mask16 == 0xffff;
     }
-    return false;
+    unimplemented!()
 }
 
 #[allow(unreachable_code)]
@@ -264,7 +264,7 @@ unsafe fn is_ltpow2_u256(value: U256, pow2: usize) -> bool {
         let result = is_zero_u256(temp);
         return result;
     }
-    return false;
+    unimplemented!()
 }
 
 unsafe fn broadcast_avx2(value: bool) -> __m256i {
@@ -336,7 +336,7 @@ unsafe fn signextend_u256(a: U256, b: U256, value: i64) -> U256 {
         let resulthi = mm_blendv_epi8(_b.1, temphi, lt32);
         return std::mem::transmute::<(__m128i, __m128i), U256>((resultlo, resulthi));
     }
-    return U256([0u64; 4]);
+    unimplemented!()
 }
 
 #[allow(unreachable_code)]
@@ -363,7 +363,7 @@ unsafe fn eq_u256(a: U256, b: U256) -> U256 {
         let result = (_mm_set_epi64x(0, bit), _mm_setzero_si128());
         return std::mem::transmute::<(__m128i, __m128i), U256>(result);
     }
-    return U256([0u64; 4]);
+    unimplemented!()
 }
 
 #[allow(unreachable_code)]
@@ -380,7 +380,7 @@ unsafe fn iszero_u256(a: U256) -> U256 {
         let result = (_mm_set_epi64x(0, bit), _mm_setzero_si128());
         return std::mem::transmute::<(__m128i, __m128i), U256>(result);
     }
-    return U256([0u64; 4]);
+    unimplemented!()
 }
 
 #[allow(unreachable_code)]
@@ -399,7 +399,7 @@ unsafe fn and_u256(a: U256, b: U256) -> U256 {
         let result = (_mm_and_si128(a.0, b.0), _mm_and_si128(a.1, b.1));
         return std::mem::transmute::<(__m128i, __m128i), U256>(result);
     }
-    return U256([0u64; 4]);
+    unimplemented!()
 }
 
 #[allow(unreachable_code)]
@@ -418,7 +418,7 @@ unsafe fn or_u256(a: U256, b: U256) -> U256 {
         let result = (_mm_or_si128(a.0, b.0), _mm_or_si128(a.1, b.1));
         return std::mem::transmute::<(__m128i, __m128i), U256>(result);
     }
-    return U256([0u64; 4]);
+    unimplemented!()
 }
 
 #[allow(unreachable_code)]
@@ -437,7 +437,7 @@ unsafe fn xor_u256(a: U256, b: U256) -> U256 {
         let result = (_mm_xor_si128(a.0, b.0), _mm_xor_si128(a.1, b.1));
         return std::mem::transmute::<(__m128i, __m128i), U256>(result);
     }
-    return U256([0u64; 4]);
+    unimplemented!()
 }
 
 #[allow(unreachable_code)]
@@ -459,7 +459,7 @@ unsafe fn not_u256(value: U256) -> U256 {
         let resulthi = _mm_andnot_si128(value.1, all_ones);
         return std::mem::transmute::<(__m128i, __m128i), U256>((resultlo, resulthi));
     }
-    return U256([0u64; 4]);
+    unimplemented!()
 }
 
 #[allow(non_snake_case)]
@@ -529,7 +529,7 @@ unsafe fn shl_u256(count: U256, value: U256) -> U256 {
         let result = (_mm_and_si128(hiisz, temp.0), _mm_and_si128(hiisz, temp.1));
         return std::mem::transmute::<(__m128i, __m128i), U256>(result);
     }
-    return U256([0u64; 4]);
+    unimplemented!()
 }
 
 fn overflowing_add_u256(a: U256, b: U256) -> (U256, bool) {
@@ -1026,7 +1026,7 @@ unsafe fn run_evm(rom: &VmRom, memory: &mut VmMemory) -> ReturnData {
             PUSH12 | PUSH13 | PUSH14 | PUSH15 | PUSH16 => {
                 comment!("opPUSH16");
                 code = code.offset(1);
-                let num_bytes = instr.push_bytes() as i32;
+                let num_bytes = (instr.push_index() as i32) + 1;
                 let result = load16_u256(code as *const U256, num_bytes);
                 stack.push(result);
                 //
@@ -1037,7 +1037,7 @@ unsafe fn run_evm(rom: &VmRom, memory: &mut VmMemory) -> ReturnData {
             PUSH31 | PUSH32 => {
                 comment!("opPUSH32");
                 code = code.offset(1);
-                let num_bytes = instr.push_bytes() as i32;
+                let num_bytes = (instr.push_index() as i32) + 1;
                 let result = load32_u256(code as *const U256, num_bytes);
                 stack.push(result);
                 //
@@ -1104,7 +1104,7 @@ unsafe fn run_evm(rom: &VmRom, memory: &mut VmMemory) -> ReturnData {
                 return ReturnData::new(offset, size, 0)
             }
             INVALID => {
-                break;
+                panic!("invalid instruction");
             }
         }
     }
@@ -1173,12 +1173,12 @@ impl VmRom {
             let mut i: usize = 0;
             while i < bytecode.len() {
                 let code = bytecode[i];
-                self.data[i] = code;
                 let instr = unsafe {
-                    std::mem::transmute::<u8, Instruction>(code)
+                    std::mem::transmute::<u8, EvmInstruction>(code)
                 };
+                self.data[i] = instr.to_internal() as u8;
                 if instr.is_push() {
-                    let num_bytes = instr.push_bytes();
+                    let num_bytes = instr.push_index() + 1;
                     let start = i + 1;
                     let end = start + num_bytes;
                     let dest = &mut self.data[start..end];
@@ -1192,11 +1192,7 @@ impl VmRom {
         }
         #[cfg(target_endian = "big")]
         {
-            let mut i: usize = 0;
-            while i < bytecode.len() {
-                self.data[i] = bytecode[i];
-                i += i;
-            }
+            unimplemented!();
         }
         // write valid jump destinations
         let jump_dests_offset = VmRom::MAX_CODESIZE as isize;
@@ -1210,13 +1206,14 @@ impl VmRom {
             let j = i;
             let code = bytecode[i];
             let instr = unsafe {
-                std::mem::transmute::<u8, Instruction>(code)
+                std::mem::transmute::<u8, EvmInstruction>(code)
             };
             if instr.is_push() {
-                i += 1 + instr.push_bytes();
+                let num_bytes = instr.push_index() + 1;
+                i += 1 + num_bytes;
             }
             else {
-                if instr == JUMPDEST {
+                if instr == EvmInstruction::JUMPDEST {
                     bits |= 1u64 << (i % 64);
                 }
                 i += 1;
@@ -1270,12 +1267,12 @@ fn print_config() {
 const VM_DEFAULT_GAS: u64 = 20_000_000_000_000;
 
 fn main() {
-    print_config();
+    //print_config();
     if let Some(arg1) = env::args().nth(1) {
         let temp = decode_hex(&arg1);
         match temp {
             Ok(bytes) => {
-                println!("{} bytes", bytes.len());
+                //println!("{} bytes", bytes.len());
                 let mut rom = VmRom::new();
                 rom.init(&bytes);
                 let mut memory = VmMemory::new();
@@ -1288,7 +1285,7 @@ fn main() {
                 for byte in slice {
                     let _ = write!(buffer, "{:02x}", byte);
                 }
-                println!("0x{:}", buffer);
+                //println!("0x{:}", buffer);
             },
             Err(e) => println!("{:?}", e)
         };
