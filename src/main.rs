@@ -549,10 +549,27 @@ fn add_u256(a: U256, b: U256) -> U256 {
     value
 }
 
+fn mul_u64(a: u64, b: u64) -> u128 {
+    /*
+    #[cfg(target_feature = "bmi2")] {
+        let lo: u64;
+        let hi: u64;
+        unsafe {
+            asm!("mulxq $2, $1, $0"
+                 : "=r"(hi), "=r"(lo)
+                 : "r"(a), "{rdx}"(b)
+                 );
+        }
+        return (lo as u128) | ((hi as u128) << 64);
+    }
+    */
+    (a as u128) * (b as u128)
+}
+
 fn mul_diag(num_limbs: usize, i: usize, a: &[u64], b: u64, r: &mut [u64], c: &mut [u64]) {
     let mut carry: u64 = 0;
     for j in 0..num_limbs {
-        let temp = (a[j] as u128) * (b as u128);
+        let temp = mul_u64(a[j], b);
         if j == 0 {
             c[i] = temp as u64;
             carry = (temp >> 64) as u64;
@@ -574,7 +591,7 @@ fn mul_diag(num_limbs: usize, i: usize, a: &[u64], b: u64, r: &mut [u64], c: &mu
 fn mul_diagc(num_limbs: usize, i: usize, a: &[u64], b: u64, r: &mut [u64], rp: &mut [u64], c: &mut [u64]) {
     let mut carry: u64 = 0;
     for j in 0..num_limbs {
-        let temp = (a[j] as u128) * (b as u128) + (r[j] as u128);
+        let temp = mul_u64(a[j], b) + (r[j] as u128);
         if j == 0 {
             c[i] = temp as u64;
             carry = (temp >> 64) as u64;
