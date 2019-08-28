@@ -239,6 +239,16 @@ impl EvmInstruction {
         *self >= EvmInstruction::PUSH1 && *self <= EvmInstruction::PUSH32
     }
 
+    /// Returns true if given instruction is a basic block (BB) terminator
+    /// JUMP -> true
+    pub fn is_terminator(&self) -> bool {
+        match *self {
+            EvmInstruction::STOP | EvmInstruction::JUMP |
+            EvmInstruction::JUMPI | EvmInstruction::INVALID => true,
+            _ => false
+        }
+    }
+
     /// Returns the index of the `PUSHN` opcode
     /// PUSH1 -> 0
     pub fn push_index(&self) -> usize {

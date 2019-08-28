@@ -55,6 +55,16 @@ impl __m256iExt for __m256i {
     }
 }
 
+#[derive(Debug)]
+pub enum VmError {
+    None,
+    StackUnderflow,
+    StackOverflow,
+    OutOfGas,
+    InvalidJumpDest,
+    InvalidInstruction,
+}
+
 #[allow(unreachable_code)]
 unsafe fn load_u256(src: *const U256, offset: isize) -> U256 {
     #[cfg(target_feature = "avx2")]
@@ -660,7 +670,8 @@ fn gt_u256(a: U256, b: U256) -> bool {
 struct VmStackSlots([U256; VmStack::LEN]);
 
 struct VmStack {
-    sp: *mut U256
+    start: *const U256,
+    sp: *mut U256,
 }
 
 impl VmStack {
@@ -668,8 +679,9 @@ impl VmStack {
 
     pub unsafe fn new(slots: &mut VmStackSlots) -> VmStack {
         VmStack {
+            start: slots.0.as_ptr(),
             // sp is always pointing at the top of the stack
-            sp: slots.0.as_mut_ptr().offset(-1)
+            sp: slots.0.as_mut_ptr().offset(-1),
         }
     }
 
@@ -774,6 +786,26 @@ macro_rules! comment {
     )
 }
 
+macro_rules! check_exception_at {
+    ($addr:expr, $rom:ident, $stack:ident, $error:ident) => {
+        let bb_info = $rom.get_bb_info($addr);
+        let stack_min_size = bb_info.stack_min_size as usize;
+        let stack_rel_max_size = bb_info.stack_rel_max_size as usize;
+        const WORD_SIZE: usize = std::mem::size_of::<U256>();
+        let stack_size = usize::wrapping_sub($stack.sp.offset(1) as _, $stack.start as _) / WORD_SIZE;
+        let underflow = stack_size < stack_min_size;
+        let overflow = (stack_size + stack_rel_max_size) > VmStack::LEN;
+        if !(underflow | overflow) {
+            continue;
+        }
+        if underflow {
+            $error = VmError::StackUnderflow;
+        } else if overflow {
+            $error = VmError::StackOverflow;
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct ReturnData {
     offset: usize,
@@ -796,6 +828,13 @@ unsafe fn run_evm(rom: &VmRom, memory: &mut VmMemory) -> ReturnData {
     let mut slots: VmStackSlots = std::mem::uninitialized();
     let mut stack: VmStack = VmStack::new(&mut slots);
     let mut code: *const u8 = rom.code();
+    let mut error: VmError = VmError::None;
+    let mut entered = false;
+    while !entered {
+        entered = true;
+        check_exception_at!(0, rom, stack, error);
+        panic!("{:?}", error);
+    }
     loop {
         let instr = std::mem::transmute::<u8, Instruction>(*code);
         //println!("{:?}", instr);
@@ -964,9 +1003,11 @@ unsafe fn run_evm(rom: &VmRom, memory: &mut VmMemory) -> ReturnData {
                 let low = addr.low_u64();
                 if in_bounds & rom.is_jumpdest(low) {
                     code = rom.code().offset(low as isize);
-                    continue;
+                    check_exception_at!(low, rom, stack, error);
+                    break;
                 }
-                panic!("invalid jumpdest");
+                error = VmError::InvalidJumpDest;
+                break;
             }
             JUMPI => {
                 comment!("opJUMPI");
@@ -980,9 +1021,11 @@ unsafe fn run_evm(rom: &VmRom, memory: &mut VmMemory) -> ReturnData {
                     let low = addr.low_u64();
                     if in_bounds & rom.is_jumpdest(low) {
                         code = rom.code().offset(low as isize);
-                        continue;
+                        check_exception_at!(low, rom, stack, error);
+                        break;
                     }
-                    panic!("invalid jumpdest");
+                    error = VmError::InvalidJumpDest;
+                    break;
                 }
             }
             PC => {
@@ -1121,11 +1164,15 @@ unsafe fn run_evm(rom: &VmRom, memory: &mut VmMemory) -> ReturnData {
                 return ReturnData::new(offset, size, 0)
             }
             INVALID => {
-                panic!("invalid instruction");
+                error = VmError::InvalidInstruction;
+                break;
             }
         }
     }
-    ReturnData::new(0, 0, 0)
+    if let VmError::None = error {
+        return ReturnData::new(0, 0, 0);
+    }
+    panic!("{:?}", error);
 }
 
 fn decode_hex(s: &str) -> Result<Vec<u8>, ParseIntError> {
@@ -1141,6 +1188,28 @@ fn decode_hex(s: &str) -> Result<Vec<u8>, ParseIntError> {
         .collect()
 }
 
+#[derive(Debug)]
+struct BbInfo {
+    stack_min_size: u16,
+    stack_rel_max_size: u16,
+    gas: u32,
+}
+impl BbInfo {
+    fn new(stack_min_size: u16, stack_max_size: u16) -> BbInfo {
+        let stack_rel_max_size = if stack_max_size > stack_min_size {
+            stack_max_size - stack_min_size
+        }
+        else {
+            0
+        };
+        BbInfo {
+            stack_min_size,
+            stack_rel_max_size: stack_rel_max_size,
+            gas: 0,
+        }
+    }
+}
+
 struct VmRom {
     data: [u8; VmRom::SIZE]
 }
@@ -1152,7 +1221,11 @@ impl VmRom {
 
     const JUMPDESTS_SIZE: usize = VmRom::MAX_CODESIZE / 8;
 
-    const SIZE: usize = VmRom::MAX_CODESIZE + VmRom::JUMPDESTS_SIZE;
+    const BB_INFOS_SIZE: usize = VmRom::MAX_CODESIZE * std::mem::size_of::<BbInfo>();
+
+    const SIZE: usize = VmRom::MAX_CODESIZE + VmRom::JUMPDESTS_SIZE + VmRom::BB_INFOS_SIZE;
+
+    const BB_INFOS_OFFSET: usize = VmRom::MAX_CODESIZE + VmRom::JUMPDESTS_SIZE;
 
     fn new() -> VmRom {
         VmRom { data: [0; VmRom::SIZE] }
@@ -1172,9 +1245,135 @@ impl VmRom {
         (bits & mask) != 0
     }
 
+    fn get_bb_info(&self, addr: u64) -> &BbInfo {
+        unsafe {
+            let offset = VmRom::BB_INFOS_OFFSET as isize;
+            let bb_infos = self.data.as_ptr().offset(offset) as *mut BbInfo;
+            &*bb_infos.offset(addr as isize)
+        }
+    }
+
     fn swap_bytes(input: &[u8], swapped: &mut[u8]) {
         for i in 0..input.len() {
             swapped[input.len()-1-i] = input[i];
+        }
+    }
+
+    fn write_bb_infos(&mut self, bytecode: &[u8]) {
+        use std::cmp::max;
+        #[derive(Debug)]
+        struct BlockInfo {
+            addr: u32,
+            stack_min_size: u16,
+            stack_max_size: u16,
+            stack_end_size: u16,
+            is_basic_block: bool,
+        }
+        impl BlockInfo {
+            fn basic(addr: u32, stack_min_size: u16, stack_max_size: u16, stack_end_size: u16) -> BlockInfo {
+                BlockInfo {
+                    addr,
+                    stack_min_size,
+                    stack_max_size,
+                    stack_end_size,
+                    is_basic_block: true,
+                }
+            }
+            fn partial(addr: u32, stack_min_size: u16, stack_max_size: u16, stack_end_size: u16) -> BlockInfo {
+                BlockInfo {
+                    addr,
+                    stack_min_size,
+                    stack_max_size,
+                    stack_end_size,
+                    is_basic_block: false,
+                }
+            }
+        }
+        const DELTA_ALPHAS: [(u16, u16); 256] = [(0, 0), (2, 1), (2, 1), (2, 1), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (2, 1), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (2, 1), (0, 0), (0, 0), (2, 1), (1, 1), (2, 1), (2, 1), (2, 1), (1, 1), (2, 1), (2, 1), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (1, 0), (1, 1), (2, 0), (2, 0), (0, 0), (0, 0), (1, 0), (2, 0), (0, 1), (0, 1), (0, 1), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1), (1, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7), (7, 8), (8, 9), (9, 10), (10, 11), (11, 12), (12, 13), (13, 14), (14, 15), (15, 16), (16, 17), (2, 2), (3, 3), (4, 4), (5, 5), (6, 6), (7, 7), (8, 8), (9, 9), (10, 10), (11, 11), (12, 12), (13, 13), (14, 14), (15, 15), (16, 16), (17, 17), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (2, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 0)];
+        let mut addr: u32 = 0;
+        let mut stack_size: u16 = 0;
+        let mut stack_min_size: u16 = 0;
+        let mut stack_max_size: u16 = 0;
+        let mut block_infos: Vec<BlockInfo> = Vec::with_capacity(1024);
+        // forward pass over the bytecode
+        let mut i: usize = 0;
+        while i < bytecode.len() {
+            let code = bytecode[i];
+            let instr = unsafe {
+                std::mem::transmute::<u8, EvmInstruction>(code)
+            };
+            let (delta, alpha) = DELTA_ALPHAS[code as usize];
+            // new_stack_size is (stack_size + needed + alpha) - delta
+            // and represents the new stack size after the opcode has been
+            // dispatched
+            let (new_stack_size, needed) = if delta > stack_size {
+                    (alpha, (delta - stack_size))
+                } else {
+                    // case stack_size >= delta
+                    ((stack_size - delta).saturating_add(alpha), 0)
+                };
+            stack_size = new_stack_size;
+            stack_min_size = stack_min_size.saturating_add(needed);
+            stack_max_size = max(stack_max_size, new_stack_size);
+            if instr.is_push() {
+                let num_bytes = instr.push_index() + 1;
+                i += 1 + num_bytes;
+            }
+            else {
+                i += 1;
+            }
+            if instr.is_terminator() || i >= bytecode.len() {
+                block_infos.push(BlockInfo::basic(
+                    addr, stack_min_size, stack_max_size, stack_size)
+                );
+                addr = i as u32;
+                stack_size = 0;
+                stack_min_size = 0;
+                stack_max_size = 0;
+            }
+            else {
+                let code = bytecode[i];
+                let instr = unsafe {
+                    std::mem::transmute::<u8, EvmInstruction>(code)
+                };
+                if instr == EvmInstruction::JUMPDEST {
+                    block_infos.push(BlockInfo::partial(
+                        addr, stack_min_size, stack_max_size, stack_size)
+                    );
+                    addr = i as u32;
+                    stack_size = 0;
+                    stack_min_size = 0;
+                    stack_max_size = 0;
+                }
+            }
+        }
+        // backward pass, write BB infos to rom
+        let bb_infos = unsafe {
+            let offset = VmRom::BB_INFOS_OFFSET as isize;
+            self.data.as_ptr().offset(offset) as *mut BbInfo
+        };
+        for info in block_infos.iter().rev() {
+            if info.is_basic_block {
+                stack_min_size = info.stack_min_size;
+                stack_max_size = info.stack_max_size;
+            }
+            else {
+                let (more, needed) = if stack_min_size > info.stack_end_size {
+                    (0, (stack_min_size - info.stack_end_size))
+                } else {
+                    // case info.stack_end_size >= stack_min_size
+                    (info.stack_end_size - stack_min_size, 0)
+                };
+                stack_min_size = info.stack_min_size.saturating_add(needed);
+                stack_max_size = max(
+                    info.stack_max_size.saturating_add(needed),
+                    stack_max_size.saturating_add(more)
+                );
+            }
+            unsafe {
+                let bb_info = BbInfo::new(stack_min_size, stack_max_size);
+                *bb_infos.offset(info.addr as isize) = bb_info;
+            }
         }
     }
 
@@ -1182,6 +1381,9 @@ impl VmRom {
         // erase rom
         for b in &mut self.data[..] {
             *b = 0;
+        }
+        if bytecode.len() > VmRom::MAX_CODESIZE {
+            panic!("bytecode is too big ({:?} bytes)", bytecode.len());
         }
         // copy bytecode
         #[cfg(target_endian = "little")]
@@ -1248,6 +1450,8 @@ impl VmRom {
         unsafe {
             *jump_dests.offset(offset) = bits
         }
+        //
+        self.write_bb_infos(bytecode);
     }
 }
 
