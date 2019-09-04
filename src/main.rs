@@ -16,6 +16,7 @@
 
 //#![feature(asm)]
 
+extern crate clap;
 #[macro_use]
 extern crate num_derive;
 extern crate num_traits;
@@ -25,11 +26,14 @@ mod instructions;
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::*;
 
+use clap::{Arg, App, SubCommand};
 use num_traits::FromPrimitive;
+use std::convert::TryFrom;
 use std::env;
+use std::fmt;
 use std::{fmt::Write, num::ParseIntError};
-use instructions::{EvmInstruction, Instruction};
-use instructions::Instruction::*;
+use instructions::{EvmOpcode, EvmInstruction, Opcode};
+use instructions::Opcode::*;
 
 #[repr(align(32))]
 #[derive(Copy, Clone)]
@@ -714,6 +718,11 @@ impl VmStack {
         store_u256(self.sp, value, offset);
         temp
     }
+
+    pub unsafe fn size(&self) -> usize {
+        const WORD_SIZE: usize = std::mem::size_of::<U256>();
+        usize::wrapping_sub(self.sp.offset(1) as _, self.start as _) / WORD_SIZE
+    }
 }
 
 struct VmMemory {
@@ -823,11 +832,28 @@ impl ReturnData {
     }
 }
 
-unsafe fn run_evm(rom: &VmRom, memory: &mut VmMemory) -> ReturnData {
+fn lldb_hook_single_step(pc: usize, stsize: usize) {}
+fn lldb_hook_stop(pc: usize, stsize: usize) {}
+
+macro_rules! lldb_hook {
+    ($code:expr, $gas:expr, $rom:ident, $stack:ident, $hook:ident) => {
+        #[cfg(debug_assertions)]
+        {
+            let stack_start = $stack.start;
+            const U8_SIZE: usize = std::mem::size_of::<u8>();
+            let pc = usize::wrapping_sub($code as _, $rom.data.as_ptr() as _) / U8_SIZE;
+            let stsize = $stack.size();
+            $hook(pc, stsize);
+        }
+    }
+}
+
+unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> ReturnData {
     // TODO: use MaybeUninit
     let mut slots: VmStackSlots = std::mem::uninitialized();
     let mut stack: VmStack = VmStack::new(&mut slots);
     let mut code: *const u8 = rom.code();
+    let mut gas: u64 = 0;
     let mut error: VmError = VmError::None;
     let mut entered = false;
     while !entered {
@@ -836,10 +862,12 @@ unsafe fn run_evm(rom: &VmRom, memory: &mut VmMemory) -> ReturnData {
         panic!("{:?}", error);
     }
     loop {
-        let instr = std::mem::transmute::<u8, Instruction>(*code);
-        //println!("{:?}", instr);
-        match instr {
+        let opcode = std::mem::transmute::<u8, Opcode>(*code);
+        lldb_hook!(code, gas, rom, stack, lldb_hook_single_step);
+        //println!("{:?}", opcode);
+        match opcode {
             STOP => {
+                lldb_hook!(code, gas, rom, stack, lldb_hook_stop);
                 break;
             },
             ADD => {
@@ -1086,7 +1114,7 @@ unsafe fn run_evm(rom: &VmRom, memory: &mut VmMemory) -> ReturnData {
             PUSH12 | PUSH13 | PUSH14 | PUSH15 | PUSH16 => {
                 comment!("opPUSH16");
                 code = code.offset(1);
-                let num_bytes = (instr.push_index() as i32) + 1;
+                let num_bytes = (opcode.push_index() as i32) + 1;
                 let result = load16_u256(code as *const U256, num_bytes);
                 stack.push(result);
                 //
@@ -1097,7 +1125,7 @@ unsafe fn run_evm(rom: &VmRom, memory: &mut VmMemory) -> ReturnData {
             PUSH31 | PUSH32 => {
                 comment!("opPUSH32");
                 code = code.offset(1);
-                let num_bytes = (instr.push_index() as i32) + 1;
+                let num_bytes = (opcode.push_index() as i32) + 1;
                 let result = load32_u256(code as *const U256, num_bytes);
                 stack.push(result);
                 //
@@ -1120,7 +1148,7 @@ unsafe fn run_evm(rom: &VmRom, memory: &mut VmMemory) -> ReturnData {
             DUP3 | DUP4 | DUP5 | DUP6 | DUP7 | DUP8 | DUP9 | DUP10 | DUP11 |
             DUP12 | DUP13 | DUP14 | DUP15 | DUP16 => {
                 comment!("opDUPn");
-                let index = instr.dup_index();
+                let index = opcode.dup_index();
                 let result = stack.peekn(index);
                 stack.push(result);
                 //
@@ -1148,7 +1176,7 @@ unsafe fn run_evm(rom: &VmRom, memory: &mut VmMemory) -> ReturnData {
             SWAP11 | SWAP12 | SWAP13 | SWAP14 | SWAP15 | SWAP16 => {
                 comment!("opSWAPn");
                 let value = stack.peek();
-                let index = instr.swap_index();
+                let index = opcode.swap_index();
                 let prev = stack.set(index, value);
                 stack.pop();
                 stack.push(prev);
@@ -1156,6 +1184,7 @@ unsafe fn run_evm(rom: &VmRom, memory: &mut VmMemory) -> ReturnData {
                 code = code.offset(1);
             }
             RETURN => {
+                lldb_hook!(code, gas, rom, stack, lldb_hook_stop);
                 comment!("opRETURN");
                 let offset = stack.pop();
                 let size = stack.pop();
@@ -1299,8 +1328,8 @@ impl VmRom {
         let mut i: usize = 0;
         while i < bytecode.len() {
             let code = bytecode[i];
-            let instr = unsafe {
-                std::mem::transmute::<u8, EvmInstruction>(code)
+            let opcode = unsafe {
+                std::mem::transmute::<u8, EvmOpcode>(code)
             };
             let (delta, alpha) = DELTA_ALPHAS[code as usize];
             // new_stack_size is (stack_size + needed + alpha) - delta
@@ -1315,14 +1344,14 @@ impl VmRom {
             stack_size = new_stack_size;
             stack_min_size = stack_min_size.saturating_add(needed);
             stack_max_size = max(stack_max_size, new_stack_size);
-            if instr.is_push() {
-                let num_bytes = instr.push_index() + 1;
+            if opcode.is_push() {
+                let num_bytes = opcode.push_index() + 1;
                 i += 1 + num_bytes;
             }
             else {
                 i += 1;
             }
-            if instr.is_terminator() || i >= bytecode.len() {
+            if opcode.is_terminator() || i >= bytecode.len() {
                 block_infos.push(BlockInfo::basic(
                     addr, stack_min_size, stack_max_size, stack_size)
                 );
@@ -1333,10 +1362,10 @@ impl VmRom {
             }
             else {
                 let code = bytecode[i];
-                let instr = unsafe {
-                    std::mem::transmute::<u8, EvmInstruction>(code)
+                let opcode = unsafe {
+                    std::mem::transmute::<u8, EvmOpcode>(code)
                 };
-                if instr == EvmInstruction::JUMPDEST {
+                if opcode == EvmOpcode::JUMPDEST {
                     block_infos.push(BlockInfo::partial(
                         addr, stack_min_size, stack_max_size, stack_size)
                     );
@@ -1392,12 +1421,12 @@ impl VmRom {
             let mut i: usize = 0;
             while i < bytecode.len() {
                 let code = bytecode[i];
-                let instr = unsafe {
-                    std::mem::transmute::<u8, EvmInstruction>(code)
+                let opcode = unsafe {
+                    std::mem::transmute::<u8, EvmOpcode>(code)
                 };
-                self.data[i] = instr.to_internal() as u8;
-                if instr.is_push() {
-                    let num_bytes = instr.push_index() + 1;
+                self.data[i] = opcode.to_internal() as u8;
+                if opcode.is_push() {
+                    let num_bytes = opcode.push_index() + 1;
                     let start = i + 1;
                     let end = start + num_bytes;
                     let dest = &mut self.data[start..end];
@@ -1424,15 +1453,15 @@ impl VmRom {
             // save i for later in j
             let j = i;
             let code = bytecode[i];
-            let instr = unsafe {
-                std::mem::transmute::<u8, EvmInstruction>(code)
+            let opcode = unsafe {
+                std::mem::transmute::<u8, EvmOpcode>(code)
             };
-            if instr.is_push() {
-                let num_bytes = instr.push_index() + 1;
+            if opcode.is_push() {
+                let num_bytes = opcode.push_index() + 1;
                 i += 1 + num_bytes;
             }
             else {
-                if instr == EvmInstruction::JUMPDEST {
+                if opcode == EvmOpcode::JUMPDEST {
                     bits |= 1u64 << (i % 64);
                 }
                 i += 1;
@@ -1487,31 +1516,151 @@ fn print_config() {
 
 const VM_DEFAULT_GAS: u64 = 20_000_000_000_000;
 
-fn main() {
-    //print_config();
-    if let Some(arg1) = env::args().nth(1) {
-        let temp = decode_hex(&arg1);
-        match temp {
-            Ok(bytes) => {
-                //println!("{} bytes", bytes.len());
-                let mut rom = VmRom::new();
-                rom.init(&bytes);
-                let mut memory = VmMemory::new();
-                memory.init(VM_DEFAULT_GAS);
-                let slice = unsafe {
-                    let ret_data = run_evm(&rom, &mut memory);
-                    memory.slice(ret_data.offset as isize, ret_data.size)
-                };
-                let mut buffer = String::with_capacity(512);
-                for byte in slice {
-                    let _ = write!(buffer, "{:02x}", byte);
-                }
-                //println!("0x{:}", buffer);
-            },
-            Err(e) => println!("{:?}", e)
-        };
+struct Bytecode<'a> {
+    data: &'a [u8],
+    addr: usize
+}
+
+impl<'a> Bytecode<'a> {
+    fn new(bytes: &'a [u8]) -> Bytecode<'a> {
+        Bytecode { data: bytes, addr: 0 }
     }
-    else {
-        println!("The first positional argument must be a hex string");
+}
+
+struct IncompletePushError {
+    addr: usize
+}
+
+impl fmt::Display for IncompletePushError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "incomplete push instruction at 0x{:04x}", self.addr)
+    }
+}
+
+impl<'a> Iterator for Bytecode<'a> {
+    type Item = Result<EvmInstruction<'a>, IncompletePushError>;
+    fn next(&mut self) -> Option<Result<EvmInstruction<'a>, IncompletePushError>> {
+        if self.addr < self.data.len() {
+            let value = self.data[self.addr];
+            match EvmOpcode::try_from(value) {
+                Ok(opcode) => {
+                    if opcode.is_push() {
+                        let num_bytes = opcode.push_index() + 1;
+                        let start = self.addr + 1;
+                        let end = start + num_bytes;
+                        if (end-1) < self.data.len() {
+                            let temp = EvmInstruction::MultiByte {
+                                addr: self.addr,
+                                opcode: opcode,
+                                bytes: &self.data[start..end]
+                            };
+                            self.addr += 1 + num_bytes;
+                            Some(Ok(temp))
+                        } else {
+                            Some(Err(IncompletePushError { addr: self.addr }))
+                        }
+                    }
+                    else {
+                        let temp = EvmInstruction::SingleByte {
+                            addr: self.addr,
+                            opcode: opcode
+                        };
+                        self.addr += 1;
+                        Some(Ok(temp))
+                    }
+                },
+                Err(_) => {
+                    let temp = EvmInstruction::SingleByte {
+                        addr: self.addr,
+                        opcode: EvmOpcode::INVALID
+                    };
+                    self.addr += 1;
+                    Some(Ok(temp))
+                }
+            }
+        } else {
+            None
+        }
+    }
+}
+
+fn disasm(input: &str) {
+    let temp = decode_hex(input);
+    match temp {
+        Ok(bytes) => {
+            let result: Result<Vec<EvmInstruction>, _> = Bytecode::new(&bytes).collect();
+            match result {
+                Ok(x) => {
+                    let asm = x
+                        .iter()
+                        .map(|i| match i {
+                            EvmInstruction::SingleByte { addr, opcode } => {
+                                format!("{:04x}:    {}", addr, opcode)
+                            },
+                            EvmInstruction::MultiByte { addr, opcode, bytes } => {
+                                let imm = encode_hex(bytes);
+                                format!("{:04x}:    {} 0x{}", addr, opcode, imm)
+                            },
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    println!("{}", asm);
+                },
+                Err(e) => println!("{}", e)
+            }
+        }
+        Err(e) => println!("{:?}", e)
+    }
+}
+
+fn evm(input: &str) {
+    let temp = decode_hex(input);
+    match temp {
+        Ok(bytes) => {
+            //println!("{} bytes", bytes.len());
+            let mut rom = VmRom::new();
+            rom.init(&bytes);
+            let mut memory = VmMemory::new();
+            memory.init(VM_DEFAULT_GAS);
+            let slice = unsafe {
+                let ret_data = run_evm(&bytes, &rom, &mut memory);
+                memory.slice(ret_data.offset as isize, ret_data.size)
+            };
+            let mut buffer = String::with_capacity(512);
+            for byte in slice {
+                let _ = write!(buffer, "{:02x}", byte);
+            }
+            println!("0x{:}", buffer);
+        },
+        Err(e) => println!("{:?}", e)
+    };
+}
+
+fn main() {
+    let matches =
+        App::new("Psyche")
+            .subcommand(SubCommand::with_name("evm")
+                .about("Run EVM bytecode")
+                .arg(Arg::with_name("input")
+                    .index(1)
+                    .required(true)
+                    .help("A valid hex string like 60ff60010100")))
+            .subcommand(SubCommand::with_name("disasm")
+                .about("Disassemble EVM bytecode")
+                .arg(Arg::with_name("input")
+                    .index(1)
+                    .required(true)
+                    .help("A valid hex string like 60ff60010100")))
+            .get_matches();
+
+    if let Some(matches) = matches.subcommand_matches("disasm") {
+        let input = matches.value_of("input").unwrap();
+        disasm(input);
+        return;
+    }
+    if let Some(matches) = matches.subcommand_matches("evm") {
+        let input = matches.value_of("input").unwrap();
+        evm(input);
+        return;
     }
 }

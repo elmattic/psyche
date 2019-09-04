@@ -15,10 +15,11 @@
 // along with Psyche. If not, see <http://www.gnu.org/licenses/>.
 
 use num_traits::FromPrimitive;
+use num_enum::TryFromPrimitive;
 
-#[repr(u8)]
 #[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Copy, Clone, FromPrimitive)]
-pub enum Instruction {
+#[repr(u8)]
+pub enum Opcode {
     STOP,
     ADD,
     MUL,
@@ -111,9 +112,9 @@ pub enum Instruction {
     INVALID
 }
 
+#[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Copy, Clone, FromPrimitive, TryFromPrimitive)]
 #[repr(u8)]
-#[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Copy, Clone, FromPrimitive)]
-pub enum EvmInstruction {
+pub enum EvmOpcode {
     STOP = 0x00,
     ADD = 0x01,
     MUL = 0x02,
@@ -206,45 +207,58 @@ pub enum EvmInstruction {
     INVALID = 0xfe
 }
 
-impl Instruction {
+use std::fmt;
+
+pub enum EvmInstruction<'a> {
+    SingleByte { addr: usize, opcode: EvmOpcode },
+    MultiByte { addr: usize, opcode: EvmOpcode, bytes: &'a[u8] },
+}
+
+impl fmt::Display for EvmOpcode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl Opcode {
     /// Returns true if given instruction is `PUSHN` instruction
     /// PUSH1 -> true
     pub fn is_push(&self) -> bool {
-        *self >= Instruction::PUSH1 && *self <= Instruction::PUSH32
+        *self >= Opcode::PUSH1 && *self <= Opcode::PUSH32
     }
 
     /// Returns the index of the `PUSHN` opcode
     /// PUSH1 -> 0
     pub fn push_index(&self) -> usize {
-        ((*self as u8) - (Instruction::PUSH1 as u8)) as usize
+        ((*self as u8) - (Opcode::PUSH1 as u8)) as usize
     }
 
     /// Returns the index of the `DUPN` opcode
     /// DUP1 -> 0
     pub fn dup_index(&self) -> usize {
-        ((*self as u8) - (Instruction::DUP1 as u8)) as usize
+        ((*self as u8) - (Opcode::DUP1 as u8)) as usize
     }
 
     /// Returns the index of the `SWAPN` opcode
     /// SWAP1 -> 0
     pub fn swap_index(&self) -> usize {
-        ((*self as u8) - (Instruction::SWAP1 as u8)) as usize
+        ((*self as u8) - (Opcode::SWAP1 as u8)) as usize
     }
 }
 
-impl EvmInstruction {
-    /// Returns true if given instruction is `PUSHN` instruction
+impl EvmOpcode {
+    /// Returns true if given opcode is `PUSHN` opcode
     /// PUSH1 -> true
     pub fn is_push(&self) -> bool {
-        *self >= EvmInstruction::PUSH1 && *self <= EvmInstruction::PUSH32
+        *self >= EvmOpcode::PUSH1 && *self <= EvmOpcode::PUSH32
     }
 
-    /// Returns true if given instruction is a basic block (BB) terminator
+    /// Returns true if given opcode is a basic block (BB) terminator
     /// JUMP -> true
     pub fn is_terminator(&self) -> bool {
         match *self {
-            EvmInstruction::STOP | EvmInstruction::JUMP |
-            EvmInstruction::JUMPI | EvmInstruction::INVALID => true,
+            EvmOpcode::STOP | EvmOpcode::JUMP |
+            EvmOpcode::JUMPI | EvmOpcode::INVALID => true,
             _ => false
         }
     }
@@ -252,12 +266,12 @@ impl EvmInstruction {
     /// Returns the index of the `PUSHN` opcode
     /// PUSH1 -> 0
     pub fn push_index(&self) -> usize {
-        ((*self as u8) - (EvmInstruction::PUSH1 as u8)) as usize
+        ((*self as u8) - (EvmOpcode::PUSH1 as u8)) as usize
     }
 
     /// Convert to internal representation
-    pub fn to_internal(&self) -> Instruction {
-        const MAPPING: [Instruction; 256] = [Instruction::STOP, Instruction::ADD, Instruction::MUL, Instruction::SUB, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::SIGNEXTEND, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::GT, Instruction::INVALID, Instruction::INVALID, Instruction::EQ, Instruction::ISZERO, Instruction::AND, Instruction::OR, Instruction::XOR, Instruction::NOT, Instruction::BYTE, Instruction::SHL, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::POP, Instruction::MLOAD, Instruction::MSTORE, Instruction::MSTORE8, Instruction::INVALID, Instruction::INVALID, Instruction::JUMP, Instruction::JUMPI, Instruction::PC, Instruction::MSIZE, Instruction::GAS, Instruction::JUMPDEST, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::PUSH1, Instruction::PUSH2, Instruction::PUSH3, Instruction::PUSH4, Instruction::PUSH5, Instruction::PUSH6, Instruction::PUSH7, Instruction::PUSH8, Instruction::PUSH9, Instruction::PUSH10, Instruction::PUSH11, Instruction::PUSH12, Instruction::PUSH13, Instruction::PUSH14, Instruction::PUSH15, Instruction::PUSH16, Instruction::PUSH17, Instruction::PUSH18, Instruction::PUSH19, Instruction::PUSH20, Instruction::PUSH21, Instruction::PUSH22, Instruction::PUSH23, Instruction::PUSH24, Instruction::PUSH25, Instruction::PUSH26, Instruction::PUSH27, Instruction::PUSH28, Instruction::PUSH29, Instruction::PUSH30, Instruction::PUSH31, Instruction::PUSH32, Instruction::DUP1, Instruction::DUP2, Instruction::DUP3, Instruction::DUP4, Instruction::DUP5, Instruction::DUP6, Instruction::DUP7, Instruction::DUP8, Instruction::DUP9, Instruction::DUP10, Instruction::DUP11, Instruction::DUP12, Instruction::DUP13, Instruction::DUP14, Instruction::DUP15, Instruction::DUP16, Instruction::SWAP1, Instruction::SWAP2, Instruction::SWAP3, Instruction::SWAP4, Instruction::SWAP5, Instruction::SWAP6, Instruction::SWAP7, Instruction::SWAP8, Instruction::SWAP9, Instruction::SWAP10, Instruction::SWAP11, Instruction::SWAP12, Instruction::SWAP13, Instruction::SWAP14, Instruction::SWAP15, Instruction::SWAP16, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::RETURN, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID, Instruction::INVALID];
+    pub fn to_internal(&self) -> Opcode {
+        const MAPPING: [Opcode; 256] = [Opcode::STOP, Opcode::ADD, Opcode::MUL, Opcode::SUB, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::SIGNEXTEND, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::GT, Opcode::INVALID, Opcode::INVALID, Opcode::EQ, Opcode::ISZERO, Opcode::AND, Opcode::OR, Opcode::XOR, Opcode::NOT, Opcode::BYTE, Opcode::SHL, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::POP, Opcode::MLOAD, Opcode::MSTORE, Opcode::MSTORE8, Opcode::INVALID, Opcode::INVALID, Opcode::JUMP, Opcode::JUMPI, Opcode::PC, Opcode::MSIZE, Opcode::GAS, Opcode::JUMPDEST, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::PUSH1, Opcode::PUSH2, Opcode::PUSH3, Opcode::PUSH4, Opcode::PUSH5, Opcode::PUSH6, Opcode::PUSH7, Opcode::PUSH8, Opcode::PUSH9, Opcode::PUSH10, Opcode::PUSH11, Opcode::PUSH12, Opcode::PUSH13, Opcode::PUSH14, Opcode::PUSH15, Opcode::PUSH16, Opcode::PUSH17, Opcode::PUSH18, Opcode::PUSH19, Opcode::PUSH20, Opcode::PUSH21, Opcode::PUSH22, Opcode::PUSH23, Opcode::PUSH24, Opcode::PUSH25, Opcode::PUSH26, Opcode::PUSH27, Opcode::PUSH28, Opcode::PUSH29, Opcode::PUSH30, Opcode::PUSH31, Opcode::PUSH32, Opcode::DUP1, Opcode::DUP2, Opcode::DUP3, Opcode::DUP4, Opcode::DUP5, Opcode::DUP6, Opcode::DUP7, Opcode::DUP8, Opcode::DUP9, Opcode::DUP10, Opcode::DUP11, Opcode::DUP12, Opcode::DUP13, Opcode::DUP14, Opcode::DUP15, Opcode::DUP16, Opcode::SWAP1, Opcode::SWAP2, Opcode::SWAP3, Opcode::SWAP4, Opcode::SWAP5, Opcode::SWAP6, Opcode::SWAP7, Opcode::SWAP8, Opcode::SWAP9, Opcode::SWAP10, Opcode::SWAP11, Opcode::SWAP12, Opcode::SWAP13, Opcode::SWAP14, Opcode::SWAP15, Opcode::SWAP16, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::RETURN, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID, Opcode::INVALID];
         MAPPING[*self as usize]
     }
 }
