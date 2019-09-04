@@ -1030,7 +1030,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> Return
                 let in_bounds = is_ltpow2_u256(addr, VmRom::MAX_CODESIZE);
                 let low = addr.low_u64();
                 if in_bounds & rom.is_jumpdest(low) {
-                    code = rom.code().offset(low as isize);
+                    code = rom.code().offset(low as isize + 1);
                     check_exception_at!(low, rom, stack, error);
                     break;
                 }
@@ -1054,7 +1054,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> Return
                     let in_bounds = is_ltpow2_u256(addr, VmRom::MAX_CODESIZE);
                     let low = addr.low_u64();
                     if in_bounds & rom.is_jumpdest(low) {
-                        code = rom.code().offset(low as isize);
+                        code = rom.code().offset(low as isize + 1);
                         check_exception_at!(low, rom, stack, error);
                         break;
                     }
