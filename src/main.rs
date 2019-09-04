@@ -1034,8 +1034,10 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> Return
                     check_exception_at!(low, rom, stack, error);
                     break;
                 }
-                error = VmError::InvalidJumpDest;
-                break;
+                else {
+                    error = VmError::InvalidJumpDest;
+                    break;
+                }
             }
             JUMPI => {
                 comment!("opJUMPI");
@@ -1043,6 +1045,10 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> Return
                 let cond = stack.pop();
                 if is_zero_u256(cond) {
                     code = code.offset(1);
+                    const U8_SIZE: usize = std::mem::size_of::<u8>();
+                    let pc = usize::wrapping_sub(code as _, rom.data.as_ptr() as _) / U8_SIZE;
+                    check_exception_at!(pc as u64, rom, stack, error);
+                    break;
                 }
                 else {
                     let in_bounds = is_ltpow2_u256(addr, VmRom::MAX_CODESIZE);
@@ -1052,8 +1058,10 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> Return
                         check_exception_at!(low, rom, stack, error);
                         break;
                     }
-                    error = VmError::InvalidJumpDest;
-                    break;
+                    else {
+                        error = VmError::InvalidJumpDest;
+                        break;
+                    }
                 }
             }
             PC => {
