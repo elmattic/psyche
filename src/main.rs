@@ -836,14 +836,12 @@ fn lldb_hook_single_step(pc: usize, stsize: usize) {}
 fn lldb_hook_stop(pc: usize, stsize: usize) {}
 
 macro_rules! lldb_hook {
-    ($code:expr, $gas:expr, $rom:ident, $stack:ident, $hook:ident) => {
+    ($pc:expr, $gas:expr, $stack:ident, $hook:ident) => {
         #[cfg(debug_assertions)]
         {
             let stack_start = $stack.start;
-            const U8_SIZE: usize = std::mem::size_of::<u8>();
-            let pc = usize::wrapping_sub($code as _, $rom.data.as_ptr() as _) / U8_SIZE;
             let stsize = $stack.size();
-            $hook(pc, stsize);
+            $hook($pc, stsize);
         }
     }
 }
@@ -852,7 +850,8 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> Return
     // TODO: use MaybeUninit
     let mut slots: VmStackSlots = std::mem::uninitialized();
     let mut stack: VmStack = VmStack::new(&mut slots);
-    let mut code: *const u8 = rom.code();
+    let code: *const Opcode = rom.code() as *const Opcode;
+    let mut pc: usize = 0;
     let mut gas: u64 = 0;
     let mut error: VmError = VmError::None;
     let mut entered = false;
@@ -862,12 +861,12 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> Return
         panic!("{:?}", error);
     }
     loop {
-        let opcode = std::mem::transmute::<u8, Opcode>(*code);
-        lldb_hook!(code, gas, rom, stack, lldb_hook_single_step);
+        let opcode = *code.offset(pc as isize);
+        lldb_hook!(pc, gas, stack, lldb_hook_single_step);
         //println!("{:?}", opcode);
         match opcode {
             STOP => {
-                lldb_hook!(code, gas, rom, stack, lldb_hook_stop);
+                lldb_hook!(pc, gas, stack, lldb_hook_stop);
                 break;
             },
             ADD => {
@@ -877,7 +876,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> Return
                 let result = add_u256(a, b);
                 stack.push(result);
                 //
-                code = code.offset(1);
+                pc += 1;
             }
             MUL => {
                 comment!("opMUL");
@@ -886,7 +885,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> Return
                 let result = mul_u256(a, b);
                 stack.push(result);
                 //
-                code = code.offset(1);
+                pc += 1;
             }
             SUB => {
                 comment!("opSUB");
@@ -895,7 +894,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> Return
                 let result = sub_u256(a, b);
                 stack.push(result);
                 //
-                code = code.offset(1);
+                pc += 1;
             }
             SIGNEXTEND => {
                 comment!("opSIGNEXTEND");
@@ -907,7 +906,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> Return
                 let result = signextend_u256(a, b, value as i64);
                 stack.push(result);
                 //
-                code = code.offset(1);
+                pc += 1;
             }
             GT => {
                 comment!("opGT");
@@ -916,7 +915,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> Return
                 let result = U256::from_u64(gt_u256(a, b) as u64);
                 stack.push(result);
                 //
-                code = code.offset(1);
+                pc += 1;
             }
             EQ => {
                 comment!("opEQ");
@@ -925,7 +924,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> Return
                 let result = eq_u256(a, b);
                 stack.push(result);
                 //
-                code = code.offset(1);
+                pc += 1;
             }
             ISZERO => {
                 comment!("opISZERO");
@@ -933,7 +932,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> Return
                 let result = iszero_u256(a);
                 stack.push(result);
                 //
-                code = code.offset(1);
+                pc += 1;
             }
             AND => {
                 comment!("opAND");
@@ -942,7 +941,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> Return
                 let result = and_u256(a, b);
                 stack.push(result);
                 //
-                code = code.offset(1);
+                pc += 1;
             }
             OR => {
                 comment!("opOR");
@@ -951,7 +950,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> Return
                 let result = or_u256(a, b);
                 stack.push(result);
                 //
-                code = code.offset(1);
+                pc += 1;
             }
             XOR => {
                 comment!("opXOR");
@@ -960,7 +959,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> Return
                 let result = xor_u256(a, b);
                 stack.push(result);
                 //
-                code = code.offset(1);
+                pc += 1;
             }
             NOT => {
                 comment!("opNOT");
@@ -968,7 +967,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> Return
                 let result = not_u256(a);
                 stack.push(result);
                 //
-                code = code.offset(1);
+                pc += 1;
             }
             BYTE => {
                 comment!("opBYTE");
@@ -983,7 +982,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> Return
                 stack.pop();
                 stack.push(result);
                 //
-                code = code.offset(1);
+                pc += 1;
             }
             SHL => {
                 comment!("opSHL");
@@ -992,13 +991,13 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> Return
                 let result = shl_u256(a, b);
                 stack.push(result);
                 //
-                code = code.offset(1);
+                pc += 1;
             }
             POP => {
                 comment!("opPOP");
                 stack.pop();
                 //
-                code = code.offset(1);
+                pc += 1;
             }
             MLOAD => {
                 comment!("opMLOAD");
@@ -1006,7 +1005,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> Return
                 let result = memory.read(offset as usize);
                 stack.push(result);
                 //
-                code = code.offset(1);
+                pc += 1;
             },
             MSTORE => {
                 comment!("opMSTORE");
@@ -1014,7 +1013,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> Return
                 let value = stack.pop();
                 memory.write(offset as usize, value);
                 //
-                code = code.offset(1);
+                pc += 1;
             },
             MSTORE8 => {
                 comment!("opMSTORE8");
@@ -1022,7 +1021,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> Return
                 let value = stack.pop().low_u64();
                 memory.write_byte(offset as usize, value as u8);
                 //
-                code = code.offset(1);
+                pc += 1;
             },
             JUMP => {
                 comment!("opJUMP");
@@ -1030,7 +1029,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> Return
                 let in_bounds = is_ltpow2_u256(addr, VmRom::MAX_CODESIZE);
                 let low = addr.low_u64();
                 if in_bounds & rom.is_jumpdest(low) {
-                    code = rom.code().offset(low as isize + 1);
+                    pc = low as usize + 1;
                     check_exception_at!(low, rom, stack, error);
                     break;
                 }
@@ -1044,9 +1043,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> Return
                 let addr = stack.pop();
                 let cond = stack.pop();
                 if is_zero_u256(cond) {
-                    code = code.offset(1);
-                    const U8_SIZE: usize = std::mem::size_of::<u8>();
-                    let pc = usize::wrapping_sub(code as _, rom.data.as_ptr() as _) / U8_SIZE;
+                    pc += 1;
                     check_exception_at!(pc as u64, rom, stack, error);
                     break;
                 }
@@ -1054,7 +1051,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> Return
                     let in_bounds = is_ltpow2_u256(addr, VmRom::MAX_CODESIZE);
                     let low = addr.low_u64();
                     if in_bounds & rom.is_jumpdest(low) {
-                        code = rom.code().offset(low as isize + 1);
+                        pc = low as usize + 1;
                         check_exception_at!(low, rom, stack, error);
                         break;
                     }
@@ -1066,92 +1063,86 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> Return
             }
             PC => {
                 comment!("opPC");
-                let result = isize::wrapping_sub(code as _, rom.code() as _) - 1;
-                let result = U256::from_u64(result as u64);
+                let result = U256::from_u64(pc as u64);
                 stack.push(result);
                 //
-                code = code.offset(1);
+                pc += 1;
             }
             MSIZE => {
                 comment!("opMSIZE");
                 let result = U256::from_u64(memory.size() as u64);
                 stack.push(result);
                 //
-                code = code.offset(1);
+                pc += 1;
             }
             GAS => {
                 comment!("opGAS");
                 let result = U256::from_u64(0);
                 stack.push(result);
                 //
-                code = code.offset(1);
+                pc += 1;
             }
             JUMPDEST => {
                 comment!("opJUMPDEST");
                 //
-                code = code.offset(1);
+                pc += 1;
             }
             PUSH1 => {
                 comment!("opPUSH1");
-                code = code.offset(1);
-                let result = *(code as *const u8);
+                let result = *(code.offset(pc as isize + 1) as *const u8);
                 let result = U256::from_u64(result as u64);
                 stack.push(result);
                 //
-                code = code.offset(1);
+                pc += 2;
             }
             PUSH2 => {
                 comment!("opPUSH2");
-                code = code.offset(1);
-                let result = *(code as *const u16);
+                let result = *(code.offset(pc as isize + 1) as *const u16);
                 let result = U256::from_u64(result as u64);
                 stack.push(result);
                 //
-                code = code.offset(2);
+                pc += 3;
             }
             PUSH4 => {
                 comment!("opPUSH4");
-                code = code.offset(1);
-                let result = *(code as *const u32);
+                let result = *(code.offset(pc as isize + 1) as *const u32);
                 let result = U256::from_u64(result as u64);
                 stack.push(result);
                 //
-                code = code.offset(4);
+                pc += 5;
             }
             PUSH3 | PUSH5 | PUSH6 | PUSH7 | PUSH8 | PUSH9 | PUSH10 | PUSH11 |
             PUSH12 | PUSH13 | PUSH14 | PUSH15 | PUSH16 => {
                 comment!("opPUSH16");
-                code = code.offset(1);
                 let num_bytes = (opcode.push_index() as i32) + 1;
-                let result = load16_u256(code as *const U256, num_bytes);
+                let result = load16_u256(code.offset(pc as isize + 1) as *const U256, num_bytes);
                 stack.push(result);
                 //
-                code = code.offset(num_bytes as isize);
+                pc += 1 + num_bytes as usize;
             }
             PUSH17 | PUSH18 | PUSH19 | PUSH20 | PUSH21 | PUSH22 | PUSH23 |
             PUSH24 | PUSH25 | PUSH26 | PUSH27 | PUSH28 | PUSH29 | PUSH30 |
             PUSH31 | PUSH32 => {
                 comment!("opPUSH32");
-                code = code.offset(1);
                 let num_bytes = (opcode.push_index() as i32) + 1;
-                let result = load32_u256(code as *const U256, num_bytes);
+                let result = load32_u256(code.offset(pc as isize + 1) as *const U256, num_bytes);
                 stack.push(result);
                 //
-                code = code.offset(num_bytes as isize);
+                pc += 1 + num_bytes as usize;
             }
             DUP1 => {
                 comment!("opDUP1");
                 let result = stack.peek();
                 stack.push(result);
                 //
-                code = code.offset(1);
+                pc += 1;
             }
             DUP2 => {
                 comment!("opDUP2");
                 let result = stack.peek1();
                 stack.push(result);
                 //
-                code = code.offset(1);
+                pc += 1;
             }
             DUP3 | DUP4 | DUP5 | DUP6 | DUP7 | DUP8 | DUP9 | DUP10 | DUP11 |
             DUP12 | DUP13 | DUP14 | DUP15 | DUP16 => {
@@ -1160,7 +1151,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> Return
                 let result = stack.peekn(index);
                 stack.push(result);
                 //
-                code = code.offset(1);
+                pc += 1;
             }
             SWAP1 => {
                 comment!("opSWAP1");
@@ -1169,7 +1160,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> Return
                 stack.push(a);
                 stack.push(b);
                 //
-                code = code.offset(1);
+                pc += 1;
             }
             SWAP2 => {
                 comment!("opSWAP2");
@@ -1178,7 +1169,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> Return
                 stack.pop();
                 stack.push(prev);
                 //
-                code = code.offset(1);
+                pc += 1;
             }
             SWAP3 | SWAP4 | SWAP5 | SWAP6 | SWAP7 | SWAP8 | SWAP9 | SWAP10 |
             SWAP11 | SWAP12 | SWAP13 | SWAP14 | SWAP15 | SWAP16 => {
@@ -1189,10 +1180,10 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> Return
                 stack.pop();
                 stack.push(prev);
                 //
-                code = code.offset(1);
+                pc += 1;
             }
             RETURN => {
-                lldb_hook!(code, gas, rom, stack, lldb_hook_stop);
+                lldb_hook!(pc, gas, stack, lldb_hook_stop);
                 comment!("opRETURN");
                 let offset = stack.pop();
                 let size = stack.pop();
