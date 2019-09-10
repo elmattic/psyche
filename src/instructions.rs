@@ -260,7 +260,7 @@ impl EvmOpcode {
     pub fn is_terminator(&self) -> bool {
         match *self {
             EvmOpcode::STOP | EvmOpcode::JUMP |
-            EvmOpcode::JUMPI | EvmOpcode::INVALID => true,
+            EvmOpcode::JUMPI | EvmOpcode::INVALID | EvmOpcode::GAS => true,
             _ => false
         }
     }

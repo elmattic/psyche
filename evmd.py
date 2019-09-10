@@ -73,6 +73,13 @@ class EVMDCmd(Cmd):
         breakpoint.SetCondition(c)
         self.breakpoints.append(Breakpoint(c, breakpoint.GetID()))
 
+    def _u64_array_to_int(self, value):
+        result = int(value.GetChildAtIndex(0).GetValue())
+        result += int(value.GetChildAtIndex(1).GetValue()) << 64
+        result += int(value.GetChildAtIndex(2).GetValue()) << 128
+        result += int(value.GetChildAtIndex(3).GetValue()) << 192
+        return result
+
     def _print_state(self, frame):
         if self.disasm is None:
             self.disasm = Disassembly(frame)
@@ -98,6 +105,8 @@ class EVMDCmd(Cmd):
         else:
             stack_str += str(stack)
         pc = int(frame.FindVariable("pc").GetValue())
+        #arr = frame.FindVariable("gas").GetChildAtIndex(0)
+        #gas = self._u64_array_to_int(arr)
         gas = int(frame.FindVariable("gas").GetValue())
         hud_str = "pc: {:04x}    gas: {}    stsize: {}\nstack: {}"
         print(hud_str.format(pc, gas, stack_size, stack_str))
