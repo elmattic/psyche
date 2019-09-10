@@ -2,6 +2,7 @@
 name = "psyche"
 version = "0.1.0"
 authors = ["elmattic <elmattic@users.noreply.github.com>"]
+licence = "GPL-3.0"
 edition = "2018"
 
 [features]
@@ -13,3 +14,4 @@ num-traits = "0.2"
 num-derive = "0.2"
 clap = "2"
 num_enum = "0.4.1"
+ethereum-types = "0.7.0"

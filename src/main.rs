@@ -17,6 +17,7 @@
 //#![feature(asm)]
 
 extern crate clap;
+extern crate ethereum_types;
 #[macro_use]
 extern crate num_derive;
 extern crate num_traits;
@@ -43,6 +44,14 @@ use schedule::Fee::*;
 struct U256(pub [u64; 4]);
 
 impl U256 {
+    pub fn default() -> U256 {
+        return U256 { 0: [0, 0, 0, 0] };
+    }
+
+    pub fn from_slice(value: &[u64]) -> U256 {
+        return U256 { 0: [value[0], value[1], value[2], value[3]] };
+    }
+
     pub fn from_u64(value: u64) -> U256 {
         return U256 { 0: [value, 0, 0, 0] };
     }
@@ -75,6 +84,22 @@ struct Word(pub (__m128i, __m128i));
 impl Word {
     unsafe fn as_u256(&self) -> U256 {
         std::mem::transmute::<Word, U256>(*self)
+    }
+
+    unsafe fn from_slice(value: &[u64]) -> Word {
+        #[cfg(target_feature = "avx2")]
+        {
+            return Word(_mm256_set_epi64x(value[3] as i64,
+                                          value[2] as i64,
+                                          value[1] as i64,
+                                          value[0] as i64));
+        }
+        #[cfg(all(not(target_feature = "avx2"), target_feature = "ssse3"))]
+        {
+            return Word((_mm_set_epi64x(value[1] as i64, value[0] as i64),
+                         _mm_set_epi64x(value[3] as i64, value[2] as i64)));
+        }
+        unimplemented!()
     }
 
     unsafe fn from_u64(value: u64) -> Word {
@@ -770,7 +795,7 @@ impl VmMemory {
         }
     }
 
-    fn init(&mut self, gas: u64) {
+    fn init(&mut self, gas_limit: U256) {
         // TODO: compute worst-case capacity base on gas limit
         let max_len = 536870912; // 512M
         let capacity = max_len * 32;
@@ -965,13 +990,13 @@ macro_rules! lldb_hook {
     }
 }
 
-unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, memory: &mut VmMemory) -> ReturnData {
+unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, gas_limit: U256, memory: &mut VmMemory) -> ReturnData {
     // TODO: use MaybeUninit
     let mut slots: VmStackSlots = std::mem::uninitialized();
     let mut stack: VmStack = VmStack::new(&mut slots);
     let code: *const Opcode = rom.code() as *const Opcode;
     let mut pc: usize = 0;
-    let mut gas: Word = Word::from_u64(VM_DEFAULT_GAS);
+    let mut gas: Word = Word::from_slice(&(gas_limit.0));
     let mut error: VmError = VmError::None;
     let mut entered = false;
     while !entered {
@@ -1747,7 +1772,7 @@ fn disasm(input: &str) {
     }
 }
 
-fn evm(input: &str) {
+fn evm(input: &str, gas_limit: U256) {
     let temp = decode_hex(input);
     match temp {
         Ok(bytes) => {
@@ -1755,9 +1780,9 @@ fn evm(input: &str) {
             let mut rom = VmRom::new();
             rom.init(&bytes, Fork::default());
             let mut memory = VmMemory::new();
-            memory.init(VM_DEFAULT_GAS);
+            memory.init(gas_limit);
             let slice = unsafe {
-                let ret_data = run_evm(&bytes, &rom, &mut memory);
+                let ret_data = run_evm(&bytes, &rom, gas_limit, &mut memory);
                 memory.slice(ret_data.offset as isize, ret_data.size)
             };
             let mut buffer = String::with_capacity(512);
@@ -1775,26 +1800,47 @@ fn main() {
         App::new("Psyche")
             .subcommand(SubCommand::with_name("evm")
                 .about("Run EVM bytecode")
-                .arg(Arg::with_name("input")
+                .arg(Arg::with_name("CODE")
                     .index(1)
                     .required(true)
-                    .help("A valid hex string like 60ff60010100")))
+                    .help("Contract code as hex (without 0x)"))
+                .arg(Arg::with_name("GAS")
+                    .takes_value(true)
+                    .short("g")
+                    .long("gas")
+                    .help("Supplied gas as decimal")))
             .subcommand(SubCommand::with_name("disasm")
                 .about("Disassemble EVM bytecode")
-                .arg(Arg::with_name("input")
+                .arg(Arg::with_name("CODE")
                     .index(1)
                     .required(true)
-                    .help("A valid hex string like 60ff60010100")))
+                    .help("Contract code as hex (without 0x)")))
             .get_matches();
 
     if let Some(matches) = matches.subcommand_matches("disasm") {
-        let input = matches.value_of("input").unwrap();
-        disasm(input);
+        let code = matches.value_of("CODE").unwrap();
+        disasm(code);
         return;
     }
     if let Some(matches) = matches.subcommand_matches("evm") {
-        let input = matches.value_of("input").unwrap();
-        evm(input);
+        let mut gas = U256::from_u64(VM_DEFAULT_GAS);
+        if let Some(value) = matches.value_of("GAS") {
+            match ethereum_types::U256::from_dec_str(value) {
+                Ok(temp) => {
+                    let mask = ethereum_types::U256::from(u64::max_value());
+                    let data: [u64; 4] = [
+                        ((temp >>   0) & mask).as_u64(),
+                        ((temp >>  64) & mask).as_u64(),
+                        ((temp >> 128) & mask).as_u64(),
+                        ((temp >> 192) & mask).as_u64()
+                    ];
+                    gas = U256::from_slice(&data);
+                }
+                Err(err) => println!("Invalid --gas: {:?}", err)
+            }
+        }
+        let code = matches.value_of("CODE").unwrap();
+        evm(code, gas);
         return;
     }
 }

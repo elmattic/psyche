@@ -108,7 +108,7 @@ class EVMDCmd(Cmd):
         #arr = frame.FindVariable("gas").GetChildAtIndex(0)
         #gas = self._u64_array_to_int(arr)
         gas = int(frame.FindVariable("gas").GetValue())
-        hud_str = "pc: {:04x}    gas: {}    stsize: {}\nstack: {}"
+        hud_str = "pc: {:04x}    gas: {:,}    stsize: {}\nstack: {}"
         print(hud_str.format(pc, gas, stack_size, stack_str))
 
         # print instructions window
