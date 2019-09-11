@@ -757,6 +757,12 @@ impl VmStack {
         temp
     }
 
+    pub unsafe fn pop_u256(&mut self) -> U256 {
+        let temp = *self.sp;
+        self.sp = self.sp.offset(-1);
+        temp
+    }
+
     pub unsafe fn peek(&self) -> U256 {
         self.peekn(0)
     }
@@ -1015,8 +1021,8 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, gas_limit: U256, memory: &mut Vm
             },
             ADD => {
                 comment!("opADD");
-                let a = stack.pop();
-                let b = stack.pop();
+                let a = stack.pop_u256();
+                let b = stack.pop_u256();
                 let result = add_u256(a, b);
                 stack.push(result);
                 //
@@ -1024,8 +1030,8 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, gas_limit: U256, memory: &mut Vm
             }
             MUL => {
                 comment!("opMUL");
-                let a = stack.pop();
-                let b = stack.pop();
+                let a = stack.pop_u256();
+                let b = stack.pop_u256();
                 let result = mul_u256(a, b);
                 stack.push(result);
                 //
@@ -1033,8 +1039,8 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, gas_limit: U256, memory: &mut Vm
             }
             SUB => {
                 comment!("opSUB");
-                let a = stack.pop();
-                let b = stack.pop();
+                let a = stack.pop_u256();
+                let b = stack.pop_u256();
                 let result = sub_u256(a, b);
                 stack.push(result);
                 //
@@ -1054,8 +1060,8 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, gas_limit: U256, memory: &mut Vm
             }
             GT => {
                 comment!("opGT");
-                let a = stack.pop();
-                let b = stack.pop();
+                let a = stack.pop_u256();
+                let b = stack.pop_u256();
                 let result = U256::from_u64(gt_u256(a, b) as u64);
                 stack.push(result);
                 //
@@ -1151,7 +1157,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, gas_limit: U256, memory: &mut Vm
             }
             MLOAD => {
                 comment!("opMLOAD");
-                let offset = stack.pop().low_u64();
+                let offset = stack.pop_u256().low_u64();
                 let result = memory.read(offset as usize);
                 stack.push(result);
                 //
@@ -1159,7 +1165,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, gas_limit: U256, memory: &mut Vm
             },
             MSTORE => {
                 comment!("opMSTORE");
-                let offset = stack.pop().low_u64();
+                let offset = stack.pop_u256().low_u64();
                 let value = stack.pop();
                 memory.write(offset as usize, value);
                 //
@@ -1167,7 +1173,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, gas_limit: U256, memory: &mut Vm
             },
             MSTORE8 => {
                 comment!("opMSTORE8");
-                let offset = stack.pop().low_u64();
+                let offset = stack.pop_u256().low_u64();
                 let value = stack.pop().low_u64();
                 memory.write_byte(offset as usize, value as u8);
                 //
@@ -1336,10 +1342,10 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, gas_limit: U256, memory: &mut Vm
             RETURN => {
                 lldb_hook!(pc, gas, stack, lldb_hook_stop);
                 comment!("opRETURN");
-                let offset = stack.pop();
-                let size = stack.pop();
-                let offset = offset.low_u64() as usize;
-                let size = size.low_u64() as usize;
+                let offset = stack.pop_u256().low_u64();
+                let offset = offset as usize;
+                let size = stack.pop_u256().low_u64();
+                let size = size as usize;
                 return ReturnData::new(offset, size, 0)
             }
             INVALID => {
