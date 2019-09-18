@@ -51,7 +51,23 @@ pub enum Fee {
 
 impl Fee {
     /// Returns the gas cost associated to a given fork
-    pub fn gas(self, fork: Fork) -> u32 {
+    pub fn gas(self, schedule: &Schedule) -> u32 {
+        schedule.fees[self as usize]
+    }
+ }
+
+#[derive(Debug)]
+pub struct Schedule {
+    pub fees: [u32; 12],
+    pub memory_gas: u64
+}
+
+impl Schedule {
+    pub fn default() -> Schedule {
+        Schedule::from_fork(Fork::default())
+    }
+
+    pub fn from_fork(fork: Fork) -> Schedule {
         const COSTS: [[u32; 12]; 9] = [
             [0, 2, 3, 5, 8, 10,  20, 1, 10, 30, 3, 20], // Frontier
             [0, 2, 3, 5, 8, 10,  20, 1, 10, 30, 3, 20], // Thawing
@@ -63,6 +79,9 @@ impl Fee {
             [0, 2, 3, 5, 8, 10, 400, 1, 10, 30, 3, 20], // Constantinople
             [0, 2, 3, 5, 8, 10, 400, 1, 10, 30, 3, 20], // Istanbul
         ];
-        COSTS[fork as usize][self as usize]
+        Schedule {
+            fees: COSTS[fork as usize],
+            memory_gas: 3
+        }
     }
- }
+}

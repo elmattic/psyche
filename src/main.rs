@@ -18,6 +18,7 @@
 
 extern crate clap;
 extern crate ethereum_types;
+extern crate memmap;
 #[macro_use]
 extern crate num_derive;
 extern crate num_traits;
@@ -29,6 +30,7 @@ mod schedule;
 use std::arch::x86_64::*;
 
 use clap::{Arg, App, SubCommand};
+use memmap::Mmap;
 use num_traits::FromPrimitive;
 use std::convert::TryFrom;
 use std::env;
@@ -36,7 +38,7 @@ use std::fmt;
 use std::{fmt::Write, num::ParseIntError};
 use instructions::{EvmOpcode, EvmInstruction, Opcode};
 use instructions::Opcode::*;
-use schedule::{Fork, Fee};
+use schedule::{Fork, Fee, Schedule};
 use schedule::Fee::*;
 
 #[repr(align(32))]
@@ -58,6 +60,16 @@ impl U256 {
 
     pub fn low_u64(&self) -> u64 {
         return self.0[0];
+    }
+
+    pub fn low_u128(&self) -> u128 {
+        let lo = self.0[0];
+        let hi = self.0[1];
+        lo as u128 | (hi as u128 >> 64)
+    }
+
+    pub fn le_u64(&self) -> bool {
+        (self.0[1] == 0) & (self.0[2] == 0) & (self.0[3] == 0)
     }
 }
 
@@ -789,28 +801,74 @@ impl VmStack {
 }
 
 struct VmMemory {
+    mmap: Option<memmap::MmapMut>,
     ptr: *mut u8,
-    len: usize
+    pub len: usize
+}
+
+fn memory_gas_cost(memory_gas: u64, num_words: u64) -> u128 {
+    mul_u64(memory_gas, num_words) + mul_u64(num_words, num_words) / 512
+}
+
+fn memory_extend_gas_cost(memory_gas: u64, num_words: u64, new_num_words: u64) -> u128 {
+    let t0 = mul_u64(num_words, num_words) / 512;
+    let t1 = mul_u64(new_num_words, new_num_words) / 512;
+    let dt = t1 - t0;
+    let d = mul_u64(memory_gas, (new_num_words - num_words));
+    let delta = dt + d;
+    delta
 }
 
 impl VmMemory {
+    const UNSUPPORTED_GAS: &'static str = "unsupported gas amount";
+
     fn new() -> VmMemory {
         VmMemory {
+            mmap: None,
             ptr: std::ptr::null_mut(),
             len: 0
         }
     }
 
+    fn find_max_mem_words(&self, gas_limit: U256, sched: &Schedule) -> u64 {
+        if (gas_limit.0[2] > 0) | (gas_limit.0[3] > 0) {
+            panic!(VmMemory::UNSUPPORTED_GAS);
+        }
+        let gas_limit = gas_limit.low_u128();
+        let mut l: u64 = 0;
+        let mut r: u64 = u64::max_value();
+        let mut result: u64 = 0;
+        while l < r {
+            let mid = l + (r - l) / 2;
+            let cost: u128 = memory_gas_cost(sched.memory_gas, mid);
+            if cost > gas_limit {
+                r = mid;
+            } else {
+                l = mid + 1;
+                result = mid;
+            }
+        }
+        result
+    }
+
     fn init(&mut self, gas_limit: U256) {
-        // TODO: compute worst-case capacity base on gas limit
-        let max_len = 536870912; // 512M
-        let capacity = max_len * 32;
-        let layout = std::alloc::Layout::from_size_align(capacity, 32);
-        match layout {
-            Ok(layout) => {
-                self.ptr = unsafe { std::alloc::alloc(layout) };
-            },
-            Err(e) => panic!(e)
+        let max_len = self.find_max_mem_words(gas_limit, &Schedule::default());
+        let (num_bytes, overflow) = max_len.overflowing_mul(32);
+        if overflow {
+            panic!(VmMemory::UNSUPPORTED_GAS);
+        }
+        let num_bytes = match usize::try_from(num_bytes) {
+            Ok(value) => value,
+            Err(_) => panic!(VmMemory::UNSUPPORTED_GAS)
+        };
+        if num_bytes > 0 {
+            match memmap::MmapMut::map_anon(num_bytes) {
+                Ok(mut mmap) => {
+                    self.ptr = mmap.as_mut_ptr();
+                    self.mmap = Some(mmap);
+                }
+                Err(e) => panic!(e)
+            }
         }
     }
 
@@ -818,28 +876,18 @@ impl VmMemory {
         self.len * std::mem::size_of::<U256>()
     }
 
-    fn extend(&mut self, offset: usize, size: usize) {
-        let len = self.len;
-        let new_len = (offset + size + 31) / 32;
-        self.len = if new_len > len { new_len } else { len };
-        self.len = if size == 0 { len } else { self.len };
-    }
-
     unsafe fn read(&mut self, offset: usize) -> U256 {
-        self.extend(offset, 32);
         let src = self.ptr.offset(offset as isize);
         let result = bswap_u256(loadu_u256(src as *const U256, 0));
         return result;
     }
 
     unsafe fn write(&mut self, offset: usize, value: U256) {
-        self.extend(offset, 32);
         let dest = self.ptr.offset(offset as isize);
         storeu_u256(dest as *mut U256, bswap_u256(value), 0);
     }
 
     unsafe fn write_byte(&mut self, offset: usize, value: u8) {
-        self.extend(offset, 1);
         let dest = self.ptr.offset(offset as isize);
         *dest = value;
     }
@@ -939,6 +987,53 @@ unsafe fn overflowing_sub_word(value: Word, amount: u64) -> (Word, bool) {
     unimplemented!()
 }
 
+#[allow(unreachable_code)]
+unsafe fn overflowing_sub_word_u128(value: Word, amount: u128) -> (Word, bool) {
+    #[cfg(target_feature = "avx2")]
+    {
+        let value = std::mem::transmute::<Word, __m256i>(value);
+        let value0 = _mm256_extract_epi64(value, 0) as u64;
+        let value1 = _mm256_extract_epi64(value, 1) as u64;
+        let value2 = _mm256_extract_epi64(value, 2) as u64;
+        let value3 = _mm256_extract_epi64(value, 3) as u64;
+        //
+        let valuelo = (value1 as u128) << 64 | (value0 as u128);
+        let valuehi = (value3 as u128) << 64 | (value2 as u128);
+        let (templo, borrowlo) = valuelo.overflowing_sub(amount);
+        let (temphi, borrowhi) = valuehi.overflowing_sub(borrowlo as u128);
+        let temp0 = templo as u64;
+        let temp1 = (templo >> 64) as u64;
+        let temp2 = temphi as u64;
+        let temp3 = (temphi >> 64) as u64;
+        //
+        let result = _mm256_set_epi64x(temp3 as i64, temp2 as i64, temp1 as i64, temp0 as i64);
+        return (std::mem::transmute::<__m256i, Word>(result), borrowhi);
+    }
+    #[cfg(target_feature = "ssse3")]
+    {
+        let value = std::mem::transmute::<Word, (__m128i, __m128i)>(value);
+        let value0 = mm_extract_epi64(value.0, 0) as u64;
+        let value1 = mm_extract_epi64(value.0, 1) as u64;
+        let value2 = mm_extract_epi64(value.1, 0) as u64;
+        let value3 = mm_extract_epi64(value.1, 1) as u64;
+        //
+        let valuelo = (value1 as u128) << 64 | (value0 as u128);
+        let valuehi = (value3 as u128) << 64 | (value2 as u128);
+        let (templo, borrowlo) = valuelo.overflowing_sub(amount);
+        let (temphi, borrowhi) = valuelo.overflowing_sub(borrowlo as u128);
+        let temp0 = templo as u64;
+        let temp1 = (templo >> 64) as u64;
+        let temp2 = temphi as u64;
+        let temp3 = (temphi >> 64) as u64;
+        //
+        let resultlo = _mm_set_epi64x(temp1 as i64, temp0 as i64);
+        let resulthi = _mm_set_epi64x(temp3 as i64, temp2 as i64);
+        let result = (resultlo, resulthi);
+        return (std::mem::transmute::<(__m128i, __m128i), Word>(result), borrowhi);
+    }
+    unimplemented!()
+}
+
 macro_rules! check_exception_at {
     ($addr:expr, $gas:ident, $rom:ident, $stack:ident, $error:ident) => {
         let bb_info = $rom.get_bb_info($addr);
@@ -960,6 +1055,56 @@ macro_rules! check_exception_at {
         }
         if overflow {
             $error = VmError::StackOverflow;
+        }
+    }
+}
+
+macro_rules! metered_extend {
+    ($new_len:ident, $overflow:ident, $schedule:ident, $memory:ident, $gas:ident, $error:ident) => {
+        if !$overflow {
+            let len = $memory.len as u64;
+            if $new_len > len {
+                let cost = memory_extend_gas_cost($schedule.memory_gas, len, $new_len);
+                let (newgas, oog) = overflowing_sub_word_u128($gas, cost);
+                $gas = newgas;
+                if !oog {
+                    $memory.len = $new_len as usize;
+                } else {
+                    $error = VmError::OutOfGas;
+                    break;
+                }
+            }
+        } else {
+            $error = VmError::OutOfGas;
+            break;
+        }
+    }
+}
+
+macro_rules! extend_memory {
+    ($offset:ident, $size:literal, $schedule:ident, $memory:ident, $gas:ident, $error:ident) => {
+        if $offset.le_u64() {
+            let (new_len, overflow) = {
+                let (temp, overflow) = $offset.low_u64().overflowing_add($size + 31);
+                (temp / 32, overflow)
+            };
+            metered_extend!(new_len, overflow, $schedule, $memory, $gas, $error);
+        } else {
+            $error = VmError::OutOfGas;
+            break;
+        }
+    };
+    ($offset:ident, $size:ident, $schedule:ident, $memory:ident, $gas:ident, $error:ident) => {
+        if $offset.le_u64() & $size.le_u64() {
+            let (new_len, overflow) = {
+                let (temp1, overflow1) = $offset.low_u64().overflowing_add($size.low_u64());
+                let (temp2, overflow2) = temp1.overflowing_add(31);
+                (temp2 / 32, overflow2 | overflow2)
+            };
+            metered_extend!(new_len, overflow, $schedule, $memory, $gas, $error);
+        } else {
+            $error = VmError::OutOfGas;
+            break;
         }
     }
 }
@@ -996,7 +1141,7 @@ macro_rules! lldb_hook {
     }
 }
 
-unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, gas_limit: U256, memory: &mut VmMemory) -> ReturnData {
+unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_limit: U256, memory: &mut VmMemory) -> ReturnData {
     // TODO: use MaybeUninit
     let mut slots: VmStackSlots = std::mem::uninitialized();
     let mut stack: VmStack = VmStack::new(&mut slots);
@@ -1157,25 +1302,28 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, gas_limit: U256, memory: &mut Vm
             }
             MLOAD => {
                 comment!("opMLOAD");
-                let offset = stack.pop_u256().low_u64();
-                let result = memory.read(offset as usize);
+                let offset = stack.pop_u256();
+                extend_memory!(offset, 32, schedule, memory, gas, error);
+                let result = memory.read(offset.low_u64() as usize);
                 stack.push(result);
                 //
                 pc += 1;
             },
             MSTORE => {
                 comment!("opMSTORE");
-                let offset = stack.pop_u256().low_u64();
+                let offset = stack.pop_u256();
                 let value = stack.pop();
-                memory.write(offset as usize, value);
+                extend_memory!(offset, 32, schedule, memory, gas, error);
+                memory.write(offset.low_u64() as usize, value);
                 //
                 pc += 1;
             },
             MSTORE8 => {
                 comment!("opMSTORE8");
-                let offset = stack.pop_u256().low_u64();
+                let offset = stack.pop_u256();
                 let value = stack.pop().low_u64();
-                memory.write_byte(offset as usize, value as u8);
+                extend_memory!(offset, 1, schedule, memory, gas, error);
+                memory.write_byte(offset.low_u64() as usize, value as u8);
                 //
                 pc += 1;
             },
@@ -1238,6 +1386,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, gas_limit: U256, memory: &mut Vm
                 //
                 pc += 1;
                 check_exception_at!(pc as u64, gas, rom, stack, error);
+                break;
             }
             JUMPDEST => {
                 comment!("opJUMPDEST");
@@ -1342,11 +1491,10 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, gas_limit: U256, memory: &mut Vm
             RETURN => {
                 lldb_hook!(pc, gas, stack, lldb_hook_stop);
                 comment!("opRETURN");
-                let offset = stack.pop_u256().low_u64();
-                let offset = offset as usize;
-                let size = stack.pop_u256().low_u64();
-                let size = size as usize;
-                return ReturnData::new(offset, size, 0)
+                let offset = stack.pop_u256();
+                let size = stack.pop_u256();
+                extend_memory!(offset, size, schedule, memory, gas, error);
+                return ReturnData::new(offset.low_u64() as usize, size.low_u64() as usize, 0)
             }
             INVALID => {
                 error = VmError::InvalidInstruction;
@@ -1444,7 +1592,7 @@ impl VmRom {
         }
     }
 
-    fn write_bb_infos(&mut self, bytecode: &[u8], fork: Fork) {
+    fn write_bb_infos(&mut self, bytecode: &[u8], schedule: &Schedule) {
         use std::cmp::max;
         #[derive(Debug)]
         struct BlockInfo {
@@ -1504,7 +1652,8 @@ impl VmRom {
             stack_size = new_stack_size;
             stack_min_size = stack_min_size.saturating_add(needed);
             stack_max_size = max(stack_max_size, new_stack_size);
-            gas += fee.gas(fork) as u64;
+            // TODO: overflow possible?
+            gas += fee.gas(schedule) as u64;
             if opcode.is_push() {
                 let num_bytes = opcode.push_index() + 1;
                 i += 1 + num_bytes;
@@ -1571,7 +1720,7 @@ impl VmRom {
         }
     }
 
-    fn init(&mut self, bytecode: &[u8], fork: Fork) {
+    fn init(&mut self, bytecode: &[u8], schedule: &Schedule) {
         // erase rom
         for b in &mut self.data[..] {
             *b = 0;
@@ -1645,7 +1794,7 @@ impl VmRom {
             *jump_dests.offset(offset) = bits
         }
         //
-        self.write_bb_infos(bytecode, fork);
+        self.write_bb_infos(bytecode, schedule);
     }
 }
 
@@ -1783,12 +1932,13 @@ fn evm(input: &str, gas_limit: U256) {
     match temp {
         Ok(bytes) => {
             //println!("{} bytes", bytes.len());
+            let schedule = Schedule::default();
             let mut rom = VmRom::new();
-            rom.init(&bytes, Fork::default());
+            rom.init(&bytes, &schedule);
             let mut memory = VmMemory::new();
             memory.init(gas_limit);
             let slice = unsafe {
-                let ret_data = run_evm(&bytes, &rom, gas_limit, &mut memory);
+                let ret_data = run_evm(&bytes, &rom, &schedule, gas_limit, &mut memory);
                 memory.slice(ret_data.offset as isize, ret_data.size)
             };
             let mut buffer = String::with_capacity(512);
