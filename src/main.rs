@@ -819,9 +819,13 @@ fn memory_extend_gas_cost(memory_gas: u64, num_words: u64, new_num_words: u64) -
     delta
 }
 
-impl VmMemory {
-    const UNSUPPORTED_GAS: &'static str = "unsupported gas amount";
+macro_rules! unsupported_gas {
+    () => {
+        panic!("unsupported gas amount")
+    }
+}
 
+impl VmMemory {
     fn new() -> VmMemory {
         VmMemory {
             mmap: None,
@@ -832,7 +836,7 @@ impl VmMemory {
 
     fn find_max_mem_words(&self, gas_limit: U256, sched: &Schedule) -> u64 {
         if (gas_limit.0[2] > 0) | (gas_limit.0[3] > 0) {
-            panic!(VmMemory::UNSUPPORTED_GAS);
+            unsupported_gas!();
         }
         let gas_limit = gas_limit.low_u128();
         let mut l: u64 = 0;
@@ -855,11 +859,11 @@ impl VmMemory {
         let max_len = self.find_max_mem_words(gas_limit, &Schedule::default());
         let (num_bytes, overflow) = max_len.overflowing_mul(32);
         if overflow {
-            panic!(VmMemory::UNSUPPORTED_GAS);
+            unsupported_gas!();
         }
         let num_bytes = match usize::try_from(num_bytes) {
             Ok(value) => value,
-            Err(_) => panic!(VmMemory::UNSUPPORTED_GAS)
+            Err(_) => unsupported_gas!()
         };
         if num_bytes > 0 {
             match memmap::MmapMut::map_anon(num_bytes) {
