@@ -29,17 +29,17 @@ mod schedule;
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::*;
 
-use clap::{Arg, App, SubCommand};
+use clap::{App, Arg, SubCommand};
+use instructions::Opcode::*;
+use instructions::{EvmInstruction, EvmOpcode, Opcode};
 use memmap::Mmap;
 use num_traits::FromPrimitive;
+use schedule::Fee::*;
+use schedule::{Fee, Fork, Schedule};
 use std::convert::TryFrom;
 use std::env;
 use std::fmt;
 use std::{fmt::Write, num::ParseIntError};
-use instructions::{EvmOpcode, EvmInstruction, Opcode};
-use instructions::Opcode::*;
-use schedule::{Fork, Fee, Schedule};
-use schedule::Fee::*;
 
 #[repr(align(32))]
 #[derive(Copy, Clone)]
@@ -51,11 +51,15 @@ impl U256 {
     }
 
     pub fn from_slice(value: &[u64]) -> U256 {
-        return U256 { 0: [value[0], value[1], value[2], value[3]] };
+        return U256 {
+            0: [value[0], value[1], value[2], value[3]],
+        };
     }
 
     pub fn from_u64(value: u64) -> U256 {
-        return U256 { 0: [value, 0, 0, 0] };
+        return U256 {
+            0: [value, 0, 0, 0],
+        };
     }
 
     pub fn low_u64(&self) -> u64 {
@@ -101,15 +105,19 @@ impl Word {
     unsafe fn from_slice(value: &[u64]) -> Word {
         #[cfg(target_feature = "avx2")]
         {
-            return Word(_mm256_set_epi64x(value[3] as i64,
-                                          value[2] as i64,
-                                          value[1] as i64,
-                                          value[0] as i64));
+            return Word(_mm256_set_epi64x(
+                value[3] as i64,
+                value[2] as i64,
+                value[1] as i64,
+                value[0] as i64,
+            ));
         }
         #[cfg(all(not(target_feature = "avx2"), target_feature = "ssse3"))]
         {
-            return Word((_mm_set_epi64x(value[1] as i64, value[0] as i64),
-                         _mm_set_epi64x(value[3] as i64, value[2] as i64)));
+            return Word((
+                _mm_set_epi64x(value[1] as i64, value[0] as i64),
+                _mm_set_epi64x(value[3] as i64, value[2] as i64),
+            ));
         }
         unimplemented!()
     }
@@ -215,7 +223,10 @@ unsafe fn storeu_u256(dest: *mut U256, value: U256, offset: isize) {
 unsafe fn load16_u256(src: *const U256, num_bytes: i32) -> U256 {
     #[cfg(target_feature = "avx2")]
     {
-        let lane8_id = _mm256_set_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31);
+        let lane8_id = _mm256_set_epi8(
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+            24, 25, 26, 27, 28, 29, 30, 31,
+        );
         let all_ones = _mm256_set_epi64x(-1, -1, -1, -1);
         //
         let src = src as *const __m128i;
@@ -247,7 +258,10 @@ unsafe fn load16_u256(src: *const U256, num_bytes: i32) -> U256 {
 unsafe fn load32_u256(src: *const U256, num_bytes: i32) -> U256 {
     #[cfg(target_feature = "avx2")]
     {
-        let lane8_id = _mm256_set_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31);
+        let lane8_id = _mm256_set_epi8(
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+            24, 25, 26, 27, 28, 29, 30, 31,
+        );
         let all_ones = _mm256_set_epi64x(-1, -1, -1, -1);
         //
         let src = src as *const __m256i;
@@ -270,7 +284,10 @@ unsafe fn load32_u256(src: *const U256, num_bytes: i32) -> U256 {
         let floor = _mm_shuffle_epi8(sfloor, _mm_setzero_si128());
         let ssum = _mm_adds_epu8(lane8_id, floor);
         let mask = _mm_cmpeq_epi8(ssum, all_ones);
-        return std::mem::transmute::<(__m128i, __m128i), U256>((valuelo, _mm_and_si128(valuehi, mask)));
+        return std::mem::transmute::<(__m128i, __m128i), U256>((
+            valuelo,
+            _mm_and_si128(valuehi, mask),
+        ));
     }
     unimplemented!()
 }
@@ -279,7 +296,10 @@ unsafe fn load32_u256(src: *const U256, num_bytes: i32) -> U256 {
 unsafe fn bswap_u256(value: U256) -> U256 {
     #[cfg(target_feature = "avx2")]
     {
-        let lane8_id = _mm256_set_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31);
+        let lane8_id = _mm256_set_epi8(
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+            24, 25, 26, 27, 28, 29, 30, 31,
+        );
         const SWAP_LANE128: i32 = (1 << 0) + (0 << 4);
         //
         let value = std::mem::transmute::<U256, __m256i>(value);
@@ -374,7 +394,10 @@ unsafe fn signextend_u256(a: U256, b: U256, value: i64) -> U256 {
     #[cfg(target_feature = "avx2")]
     {
         let one = _mm256_set_epi64x(0, 0, 0, 1);
-        let lane8_id = _mm256_set_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31);
+        let lane8_id = _mm256_set_epi8(
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+            24, 25, 26, 27, 28, 29, 30, 31,
+        );
         let all_ones = _mm256_set_epi64x(-1, -1, -1, -1);
         //
         let _a = std::mem::transmute::<U256, __m256i>(a);
@@ -656,37 +679,41 @@ fn mul_diag(num_limbs: usize, i: usize, a: &[u64], b: u64, r: &mut [u64], c: &mu
         if j == 0 {
             c[i] = temp as u64;
             carry = (temp >> 64) as u64;
-        }
-        else {
+        } else {
             let temp2 = temp + (carry as u128);
             if j == (num_limbs - 1) {
-                r[j-1] = temp2 as u64;
-                r[j-0] = (temp2 >> 64) as u64;
-            }
-            else {
-                r[j-1] = temp2 as u64;
+                r[j - 1] = temp2 as u64;
+                r[j - 0] = (temp2 >> 64) as u64;
+            } else {
+                r[j - 1] = temp2 as u64;
                 carry = (temp2 >> 64) as u64;
             }
         }
     }
 }
 
-fn mul_diagc(num_limbs: usize, i: usize, a: &[u64], b: u64, r: &mut [u64], rp: &mut [u64], c: &mut [u64]) {
+fn mul_diagc(
+    num_limbs: usize,
+    i: usize,
+    a: &[u64],
+    b: u64,
+    r: &mut [u64],
+    rp: &mut [u64],
+    c: &mut [u64],
+) {
     let mut carry: u64 = 0;
     for j in 0..num_limbs {
         let temp = mul_u64(a[j], b) + (r[j] as u128);
         if j == 0 {
             c[i] = temp as u64;
             carry = (temp >> 64) as u64;
-        }
-        else {
+        } else {
             let temp2 = temp + (carry as u128);
             if j == (num_limbs - 1) {
-                rp[j-1] = temp2 as u64;
-                rp[j-0] = (temp2 >> 64) as u64;
-            }
-            else {
-                rp[j-1] = temp2 as u64;
+                rp[j - 1] = temp2 as u64;
+                rp[j - 0] = (temp2 >> 64) as u64;
+            } else {
+                rp[j - 1] = temp2 as u64;
                 carry = (temp2 >> 64) as u64;
             }
         }
@@ -706,7 +733,7 @@ fn mul_limbs(num_limbs: usize, a: &[u64], b: &[u64], c: &mut [u64]) {
         }
     }
     for i in 0..num_limbs {
-        c[num_limbs+i] = rp[i];
+        c[num_limbs + i] = rp[i];
     }
 }
 
@@ -724,7 +751,10 @@ fn overflowing_sub_u256(a: U256, b: U256) -> (U256, bool) {
     let (lo, borrowlo) = alo.overflowing_sub(blo);
     let hi = ahi.wrapping_sub(bhi).wrapping_sub(borrowlo as u128);
     let borrow = (ahi < bhi) | ((ahi == bhi) & borrowlo);
-    (U256([lo as u64, (lo >> 64) as u64, hi as u64, (hi >> 64) as u64]), borrow)
+    (
+        U256([lo as u64, (lo >> 64) as u64, hi as u64, (hi >> 64) as u64]),
+        borrow,
+    )
 }
 
 fn sub_u256(a: U256, b: U256) -> U256 {
@@ -803,7 +833,7 @@ impl VmStack {
 struct VmMemory {
     mmap: Option<memmap::MmapMut>,
     ptr: *mut u8,
-    pub len: usize
+    pub len: usize,
 }
 
 fn memory_gas_cost(memory_gas: u64, num_words: u64) -> u128 {
@@ -822,7 +852,7 @@ fn memory_extend_gas_cost(memory_gas: u64, num_words: u64, new_num_words: u64) -
 macro_rules! unsupported_gas {
     () => {
         panic!("unsupported gas amount")
-    }
+    };
 }
 
 impl VmMemory {
@@ -830,7 +860,7 @@ impl VmMemory {
         VmMemory {
             mmap: None,
             ptr: std::ptr::null_mut(),
-            len: 0
+            len: 0,
         }
     }
 
@@ -863,7 +893,7 @@ impl VmMemory {
         }
         let num_bytes = match usize::try_from(num_bytes) {
             Ok(value) => value,
-            Err(_) => unsupported_gas!()
+            Err(_) => unsupported_gas!(),
         };
         if num_bytes > 0 {
             match memmap::MmapMut::map_anon(num_bytes) {
@@ -871,7 +901,7 @@ impl VmMemory {
                     self.ptr = mmap.as_mut_ptr();
                     self.mmap = Some(mmap);
                 }
-                Err(e) => panic!(e)
+                Err(e) => panic!(e),
             }
         }
     }
@@ -902,12 +932,12 @@ impl VmMemory {
 }
 
 macro_rules! comment {
-   ($lit:literal) => (
+    ($lit:literal) => {
         #[cfg(feature = "asm-comment")]
         {
             asm!(concat!("# ", $lit));
         }
-    )
+    };
 }
 
 // // this is only possible with rust nightly (#15701)
@@ -941,16 +971,14 @@ unsafe fn mm_extract_epi64(a: __m128i, imm8: i32) -> i64 {
     {
         if imm8 == 0 {
             return _mm_extract_epi64(a, 0);
-        }
-        else if imm8 == 1 {
+        } else if imm8 == 1 {
             return _mm_extract_epi64(a, 1);
         }
         return unreachable!();
     }
     if imm8 == 0 {
         return _mm_cvtsi128_si64(a);
-    }
-    else if imm8 == 1 {
+    } else if imm8 == 1 {
         return _mm_cvtsi128_si64(_mm_srli_si128(a, 8));
     }
     unreachable!()
@@ -986,7 +1014,10 @@ unsafe fn overflowing_sub_word(value: Word, amount: u64) -> (Word, bool) {
         let resultlo = _mm_set_epi64x(temp1 as i64, temp0 as i64);
         let resulthi = _mm_set_epi64x(temp3 as i64, temp2 as i64);
         let result = (resultlo, resulthi);
-        return (std::mem::transmute::<(__m128i, __m128i), Word>(result), borrow3);
+        return (
+            std::mem::transmute::<(__m128i, __m128i), Word>(result),
+            borrow3,
+        );
     }
     unimplemented!()
 }
@@ -1033,7 +1064,10 @@ unsafe fn overflowing_sub_word_u128(value: Word, amount: u128) -> (Word, bool) {
         let resultlo = _mm_set_epi64x(temp1 as i64, temp0 as i64);
         let resulthi = _mm_set_epi64x(temp3 as i64, temp2 as i64);
         let result = (resultlo, resulthi);
-        return (std::mem::transmute::<(__m128i, __m128i), Word>(result), borrowhi);
+        return (
+            std::mem::transmute::<(__m128i, __m128i), Word>(result),
+            borrowhi,
+        );
     }
     unimplemented!()
 }
@@ -1060,7 +1094,7 @@ macro_rules! check_exception_at {
         if overflow {
             $error = VmError::StackOverflow;
         }
-    }
+    };
 }
 
 macro_rules! metered_extend {
@@ -1082,7 +1116,7 @@ macro_rules! metered_extend {
             $error = VmError::OutOfGas;
             break;
         }
-    }
+    };
 }
 
 macro_rules! extend_memory {
@@ -1110,14 +1144,14 @@ macro_rules! extend_memory {
             $error = VmError::OutOfGas;
             break;
         }
-    }
+    };
 }
 
 #[derive(Debug)]
 pub struct ReturnData {
     offset: usize,
     size: usize,
-    gas: u64
+    gas: u64,
 }
 
 impl ReturnData {
@@ -1125,7 +1159,7 @@ impl ReturnData {
         ReturnData {
             offset: offset,
             size: size,
-            gas: gas
+            gas: gas,
         }
     }
 }
@@ -1142,10 +1176,16 @@ macro_rules! lldb_hook {
             let stsize = $stack.size();
             $hook($pc, gas, stsize);
         }
-    }
+    };
 }
 
-unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_limit: U256, memory: &mut VmMemory) -> ReturnData {
+unsafe fn run_evm(
+    bytecode: &[u8],
+    rom: &VmRom,
+    schedule: &Schedule,
+    gas_limit: U256,
+    memory: &mut VmMemory,
+) -> ReturnData {
     // TODO: use MaybeUninit
     let mut slots: VmStackSlots = std::mem::uninitialized();
     let mut stack: VmStack = VmStack::new(&mut slots);
@@ -1167,7 +1207,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_limit: 
             STOP => {
                 lldb_hook!(pc, gas, stack, lldb_hook_stop);
                 break;
-            },
+            }
             ADD => {
                 comment!("opADD");
                 let a = stack.pop_u256();
@@ -1312,7 +1352,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_limit: 
                 stack.push(result);
                 //
                 pc += 1;
-            },
+            }
             MSTORE => {
                 comment!("opMSTORE");
                 let offset = stack.pop_u256();
@@ -1321,7 +1361,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_limit: 
                 memory.write(offset.low_u64() as usize, value);
                 //
                 pc += 1;
-            },
+            }
             MSTORE8 => {
                 comment!("opMSTORE8");
                 let offset = stack.pop_u256();
@@ -1330,7 +1370,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_limit: 
                 memory.write_byte(offset.low_u64() as usize, value as u8);
                 //
                 pc += 1;
-            },
+            }
             JUMP => {
                 comment!("opJUMP");
                 let addr = stack.pop();
@@ -1340,8 +1380,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_limit: 
                     pc = low as usize + 1;
                     check_exception_at!(low, gas, rom, stack, error);
                     break;
-                }
-                else {
+                } else {
                     error = VmError::InvalidJumpDest;
                     break;
                 }
@@ -1354,16 +1393,14 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_limit: 
                     pc += 1;
                     check_exception_at!(pc as u64, gas, rom, stack, error);
                     break;
-                }
-                else {
+                } else {
                     let in_bounds = is_ltpow2_u256(addr, VmRom::MAX_CODESIZE);
                     let low = addr.low_u64();
                     if in_bounds & rom.is_jumpdest(low) {
                         pc = low as usize + 1;
                         check_exception_at!(low, gas, rom, stack, error);
                         break;
-                    }
-                    else {
+                    } else {
                         error = VmError::InvalidJumpDest;
                         break;
                     }
@@ -1421,8 +1458,8 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_limit: 
                 //
                 pc += 5;
             }
-            PUSH3 | PUSH5 | PUSH6 | PUSH7 | PUSH8 | PUSH9 | PUSH10 | PUSH11 |
-            PUSH12 | PUSH13 | PUSH14 | PUSH15 | PUSH16 => {
+            PUSH3 | PUSH5 | PUSH6 | PUSH7 | PUSH8 | PUSH9 | PUSH10 | PUSH11 | PUSH12 | PUSH13
+            | PUSH14 | PUSH15 | PUSH16 => {
                 comment!("opPUSH16");
                 let num_bytes = (opcode.push_index() as i32) + 1;
                 let result = load16_u256(code.offset(pc as isize + 1) as *const U256, num_bytes);
@@ -1430,9 +1467,8 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_limit: 
                 //
                 pc += 1 + num_bytes as usize;
             }
-            PUSH17 | PUSH18 | PUSH19 | PUSH20 | PUSH21 | PUSH22 | PUSH23 |
-            PUSH24 | PUSH25 | PUSH26 | PUSH27 | PUSH28 | PUSH29 | PUSH30 |
-            PUSH31 | PUSH32 => {
+            PUSH17 | PUSH18 | PUSH19 | PUSH20 | PUSH21 | PUSH22 | PUSH23 | PUSH24 | PUSH25
+            | PUSH26 | PUSH27 | PUSH28 | PUSH29 | PUSH30 | PUSH31 | PUSH32 => {
                 comment!("opPUSH32");
                 let num_bytes = (opcode.push_index() as i32) + 1;
                 let result = load32_u256(code.offset(pc as isize + 1) as *const U256, num_bytes);
@@ -1454,8 +1490,8 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_limit: 
                 //
                 pc += 1;
             }
-            DUP3 | DUP4 | DUP5 | DUP6 | DUP7 | DUP8 | DUP9 | DUP10 | DUP11 |
-            DUP12 | DUP13 | DUP14 | DUP15 | DUP16 => {
+            DUP3 | DUP4 | DUP5 | DUP6 | DUP7 | DUP8 | DUP9 | DUP10 | DUP11 | DUP12 | DUP13
+            | DUP14 | DUP15 | DUP16 => {
                 comment!("opDUPn");
                 let index = opcode.dup_index();
                 let result = stack.peekn(index);
@@ -1481,8 +1517,8 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_limit: 
                 //
                 pc += 1;
             }
-            SWAP3 | SWAP4 | SWAP5 | SWAP6 | SWAP7 | SWAP8 | SWAP9 | SWAP10 |
-            SWAP11 | SWAP12 | SWAP13 | SWAP14 | SWAP15 | SWAP16 => {
+            SWAP3 | SWAP4 | SWAP5 | SWAP6 | SWAP7 | SWAP8 | SWAP9 | SWAP10 | SWAP11 | SWAP12
+            | SWAP13 | SWAP14 | SWAP15 | SWAP16 => {
                 comment!("opSWAPn");
                 let value = stack.peek();
                 let index = opcode.swap_index();
@@ -1498,7 +1534,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_limit: 
                 let offset = stack.pop_u256();
                 let size = stack.pop_u256();
                 extend_memory!(offset, size, schedule, memory, gas, error);
-                return ReturnData::new(offset.low_u64() as usize, size.low_u64() as usize, 0)
+                return ReturnData::new(offset.low_u64() as usize, size.low_u64() as usize, 0);
             }
             INVALID => {
                 error = VmError::InvalidInstruction;
@@ -1519,7 +1555,7 @@ fn decode_hex(s: &str) -> Result<Vec<u8>, ParseIntError> {
             let temp: Result<u8, _> = u8::from_str_radix(&s[i..i + 2], 16);
             match temp {
                 Ok(_) => temp,
-                Err(e) => Err(e)
+                Err(e) => Err(e),
             }
         })
         .collect()
@@ -1535,8 +1571,7 @@ impl BbInfo {
     fn new(stack_min_size: u16, stack_max_size: u16, gas: u64) -> BbInfo {
         let stack_rel_max_size = if stack_max_size > stack_min_size {
             stack_max_size - stack_min_size
-        }
-        else {
+        } else {
             0
         };
         BbInfo {
@@ -1548,7 +1583,7 @@ impl BbInfo {
 }
 
 struct VmRom {
-    data: [u8; VmRom::SIZE]
+    data: [u8; VmRom::SIZE],
 }
 
 impl VmRom {
@@ -1565,7 +1600,9 @@ impl VmRom {
     const BB_INFOS_OFFSET: usize = VmRom::MAX_CODESIZE + VmRom::JUMPDESTS_SIZE;
 
     fn new() -> VmRom {
-        VmRom { data: [0; VmRom::SIZE] }
+        VmRom {
+            data: [0; VmRom::SIZE],
+        }
     }
 
     fn code(&self) -> *const u8 {
@@ -1573,9 +1610,8 @@ impl VmRom {
     }
 
     fn is_jumpdest(&self, addr: u64) -> bool {
-        let jump_dests = unsafe {
-            self.data.as_ptr().offset(VmRom::MAX_CODESIZE as isize) as *mut u64
-        };
+        let jump_dests =
+            unsafe { self.data.as_ptr().offset(VmRom::MAX_CODESIZE as isize) as *mut u64 };
         let offset = (addr % (VmRom::MAX_CODESIZE as u64)) as isize;
         let bits = unsafe { *jump_dests.offset(offset / 64) };
         let mask = 1u64 << (offset % 64);
@@ -1590,9 +1626,9 @@ impl VmRom {
         }
     }
 
-    fn swap_bytes(input: &[u8], swapped: &mut[u8]) {
+    fn swap_bytes(input: &[u8], swapped: &mut [u8]) {
         for i in 0..input.len() {
-            swapped[input.len()-1-i] = input[i];
+            swapped[input.len() - 1 - i] = input[i];
         }
     }
 
@@ -1608,7 +1644,13 @@ impl VmRom {
             is_basic_block: bool,
         }
         impl BlockInfo {
-            fn basic(addr: u32, stack_min_size: u16, stack_max_size: u16, stack_end_size: u16, gas: u64) -> BlockInfo {
+            fn basic(
+                addr: u32,
+                stack_min_size: u16,
+                stack_max_size: u16,
+                stack_end_size: u16,
+                gas: u64,
+            ) -> BlockInfo {
                 BlockInfo {
                     addr,
                     stack_min_size,
@@ -1618,7 +1660,13 @@ impl VmRom {
                     is_basic_block: true,
                 }
             }
-            fn partial(addr: u32, stack_min_size: u16, stack_max_size: u16, stack_end_size: u16, gas: u64) -> BlockInfo {
+            fn partial(
+                addr: u32,
+                stack_min_size: u16,
+                stack_max_size: u16,
+                stack_end_size: u16,
+                gas: u64,
+            ) -> BlockInfo {
                 BlockInfo {
                     addr,
                     stack_min_size,
@@ -1629,7 +1677,264 @@ impl VmRom {
                 }
             }
         }
-        const OPCODE_INFOS: [(Fee, u16, u16); 256] = [(Zero, 0, 0), (VeryLow, 2, 1), (Low, 2, 1), (VeryLow, 2, 1), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Low, 2, 1), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (VeryLow, 2, 1), (Zero, 0, 0), (Zero, 0, 0), (VeryLow, 2, 1), (VeryLow, 1, 1), (VeryLow, 2, 1), (VeryLow, 2, 1), (VeryLow, 2, 1), (VeryLow, 1, 1), (VeryLow, 2, 1), (VeryLow, 2, 1), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Base, 0, 1), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Base, 1, 0), (VeryLow, 1, 1), (VeryLow, 2, 0), (VeryLow, 2, 0), (Zero, 0, 0), (Zero, 0, 0), (Mid, 1, 0), (High, 2, 0), (Base, 0, 1), (Base, 0, 1), (Base, 0, 1), (Jumpdest, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 1, 2), (VeryLow, 2, 3), (VeryLow, 3, 4), (VeryLow, 4, 5), (VeryLow, 5, 6), (VeryLow, 6, 7), (VeryLow, 7, 8), (VeryLow, 8, 9), (VeryLow, 9, 10), (VeryLow, 10, 11), (VeryLow, 11, 12), (VeryLow, 12, 13), (VeryLow, 13, 14), (VeryLow, 14, 15), (VeryLow, 15, 16), (VeryLow, 16, 17), (VeryLow, 2, 2), (VeryLow, 3, 3), (VeryLow, 4, 4), (VeryLow, 5, 5), (VeryLow, 6, 6), (VeryLow, 7, 7), (VeryLow, 8, 8), (VeryLow, 9, 9), (VeryLow, 10, 10), (VeryLow, 11, 11), (VeryLow, 12, 12), (VeryLow, 13, 13), (VeryLow, 14, 14), (VeryLow, 15, 15), (VeryLow, 16, 16), (VeryLow, 17, 17), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 2, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0)];
+        const OPCODE_INFOS: [(Fee, u16, u16); 256] = [
+            (Zero, 0, 0),
+            (VeryLow, 2, 1),
+            (Low, 2, 1),
+            (VeryLow, 2, 1),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Low, 2, 1),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (VeryLow, 2, 1),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (VeryLow, 2, 1),
+            (VeryLow, 1, 1),
+            (VeryLow, 2, 1),
+            (VeryLow, 2, 1),
+            (VeryLow, 2, 1),
+            (VeryLow, 1, 1),
+            (VeryLow, 2, 1),
+            (VeryLow, 2, 1),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Base, 0, 1),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Base, 1, 0),
+            (VeryLow, 1, 1),
+            (VeryLow, 2, 0),
+            (VeryLow, 2, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Mid, 1, 0),
+            (High, 2, 0),
+            (Base, 0, 1),
+            (Base, 0, 1),
+            (Base, 0, 1),
+            (Jumpdest, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 1, 2),
+            (VeryLow, 2, 3),
+            (VeryLow, 3, 4),
+            (VeryLow, 4, 5),
+            (VeryLow, 5, 6),
+            (VeryLow, 6, 7),
+            (VeryLow, 7, 8),
+            (VeryLow, 8, 9),
+            (VeryLow, 9, 10),
+            (VeryLow, 10, 11),
+            (VeryLow, 11, 12),
+            (VeryLow, 12, 13),
+            (VeryLow, 13, 14),
+            (VeryLow, 14, 15),
+            (VeryLow, 15, 16),
+            (VeryLow, 16, 17),
+            (VeryLow, 2, 2),
+            (VeryLow, 3, 3),
+            (VeryLow, 4, 4),
+            (VeryLow, 5, 5),
+            (VeryLow, 6, 6),
+            (VeryLow, 7, 7),
+            (VeryLow, 8, 8),
+            (VeryLow, 9, 9),
+            (VeryLow, 10, 10),
+            (VeryLow, 11, 11),
+            (VeryLow, 12, 12),
+            (VeryLow, 13, 13),
+            (VeryLow, 14, 14),
+            (VeryLow, 15, 15),
+            (VeryLow, 16, 16),
+            (VeryLow, 17, 17),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 2, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+        ];
         let mut addr: u32 = 0;
         let mut stack_size: u16 = 0;
         let mut stack_min_size: u16 = 0;
@@ -1640,19 +1945,17 @@ impl VmRom {
         let mut i: usize = 0;
         while i < bytecode.len() {
             let code = bytecode[i];
-            let opcode = unsafe {
-                std::mem::transmute::<u8, EvmOpcode>(code)
-            };
+            let opcode = unsafe { std::mem::transmute::<u8, EvmOpcode>(code) };
             let (fee, delta, alpha) = OPCODE_INFOS[code as usize];
             // new_stack_size is (stack_size + needed + alpha) - delta
             // and represents the new stack size after the opcode has been
             // dispatched
             let (new_stack_size, needed) = if delta > stack_size {
-                    (alpha, (delta - stack_size))
-                } else {
-                    // case stack_size >= delta
-                    ((stack_size - delta).saturating_add(alpha), 0)
-                };
+                (alpha, (delta - stack_size))
+            } else {
+                // case stack_size >= delta
+                ((stack_size - delta).saturating_add(alpha), 0)
+            };
             stack_size = new_stack_size;
             stack_min_size = stack_min_size.saturating_add(needed);
             stack_max_size = max(stack_max_size, new_stack_size);
@@ -1661,29 +1964,33 @@ impl VmRom {
             if opcode.is_push() {
                 let num_bytes = opcode.push_index() + 1;
                 i += 1 + num_bytes;
-            }
-            else {
+            } else {
                 i += 1;
             }
             if opcode.is_terminator() || i >= bytecode.len() {
                 block_infos.push(BlockInfo::basic(
-                    addr, stack_min_size, stack_max_size, stack_size, gas)
-                );
+                    addr,
+                    stack_min_size,
+                    stack_max_size,
+                    stack_size,
+                    gas,
+                ));
                 addr = i as u32;
                 stack_size = 0;
                 stack_min_size = 0;
                 stack_max_size = 0;
                 gas = 0;
-            }
-            else {
+            } else {
                 let code = bytecode[i];
-                let opcode = unsafe {
-                    std::mem::transmute::<u8, EvmOpcode>(code)
-                };
+                let opcode = unsafe { std::mem::transmute::<u8, EvmOpcode>(code) };
                 if opcode == EvmOpcode::JUMPDEST {
                     block_infos.push(BlockInfo::partial(
-                        addr, stack_min_size, stack_max_size, stack_size, gas)
-                    );
+                        addr,
+                        stack_min_size,
+                        stack_max_size,
+                        stack_size,
+                        gas,
+                    ));
                     addr = i as u32;
                     stack_size = 0;
                     stack_min_size = 0;
@@ -1702,8 +2009,7 @@ impl VmRom {
                 stack_min_size = info.stack_min_size;
                 stack_max_size = info.stack_max_size;
                 gas = info.gas;
-            }
-            else {
+            } else {
                 let (more, needed) = if stack_min_size > info.stack_end_size {
                     (0, (stack_min_size - info.stack_end_size))
                 } else {
@@ -1713,7 +2019,7 @@ impl VmRom {
                 stack_min_size = info.stack_min_size.saturating_add(needed);
                 stack_max_size = max(
                     info.stack_max_size.saturating_add(needed),
-                    stack_max_size.saturating_add(more)
+                    stack_max_size.saturating_add(more),
                 );
                 gas += info.gas;
             }
@@ -1739,9 +2045,7 @@ impl VmRom {
             let mut i: usize = 0;
             while i < bytecode.len() {
                 let code = bytecode[i];
-                let opcode = unsafe {
-                    std::mem::transmute::<u8, EvmOpcode>(code)
-                };
+                let opcode = unsafe { std::mem::transmute::<u8, EvmOpcode>(code) };
                 self.data[i] = opcode.to_internal() as u8;
                 if opcode.is_push() {
                     let num_bytes = opcode.push_index() + 1;
@@ -1750,8 +2054,7 @@ impl VmRom {
                     let dest = &mut self.data[start..end];
                     VmRom::swap_bytes(&bytecode[start..end], dest);
                     i += 1 + num_bytes;
-                }
-                else {
+                } else {
                     i += 1;
                 }
             }
@@ -1762,23 +2065,18 @@ impl VmRom {
         }
         // write valid jump destinations
         let jump_dests_offset = VmRom::MAX_CODESIZE as isize;
-        let jump_dests = unsafe {
-            self.data.as_mut_ptr().offset(jump_dests_offset) as *mut u64
-        };
+        let jump_dests = unsafe { self.data.as_mut_ptr().offset(jump_dests_offset) as *mut u64 };
         let mut bits: u64 = 0;
         let mut i: usize = 0;
         while i < bytecode.len() {
             // save i for later in j
             let j = i;
             let code = bytecode[i];
-            let opcode = unsafe {
-                std::mem::transmute::<u8, EvmOpcode>(code)
-            };
+            let opcode = unsafe { std::mem::transmute::<u8, EvmOpcode>(code) };
             if opcode.is_push() {
                 let num_bytes = opcode.push_index() + 1;
                 i += 1 + num_bytes;
-            }
-            else {
+            } else {
                 if opcode == EvmOpcode::JUMPDEST {
                     bits |= 1u64 << (i % 64);
                 }
@@ -1787,16 +2085,12 @@ impl VmRom {
             let do_write = (j % 64) > (i % 64);
             if do_write {
                 let offset = (j / 64) as isize;
-                unsafe {
-                    *jump_dests.offset(offset) = bits
-                }
+                unsafe { *jump_dests.offset(offset) = bits }
                 bits = 0;
             }
         }
         let offset = (i / 64) as isize;
-        unsafe {
-            *jump_dests.offset(offset) = bits
-        }
+        unsafe { *jump_dests.offset(offset) = bits }
         //
         self.write_bb_infos(bytecode, schedule);
     }
@@ -1836,17 +2130,20 @@ const VM_DEFAULT_GAS: u64 = 20_000_000_000_000;
 
 struct Bytecode<'a> {
     data: &'a [u8],
-    addr: usize
+    addr: usize,
 }
 
 impl<'a> Bytecode<'a> {
     fn new(bytes: &'a [u8]) -> Bytecode<'a> {
-        Bytecode { data: bytes, addr: 0 }
+        Bytecode {
+            data: bytes,
+            addr: 0,
+        }
     }
 }
 
 struct IncompletePushError {
-    addr: usize
+    addr: usize,
 }
 
 impl fmt::Display for IncompletePushError {
@@ -1866,31 +2163,30 @@ impl<'a> Iterator for Bytecode<'a> {
                         let num_bytes = opcode.push_index() + 1;
                         let start = self.addr + 1;
                         let end = start + num_bytes;
-                        if (end-1) < self.data.len() {
+                        if (end - 1) < self.data.len() {
                             let temp = EvmInstruction::MultiByte {
                                 addr: self.addr,
                                 opcode: opcode,
-                                bytes: &self.data[start..end]
+                                bytes: &self.data[start..end],
                             };
                             self.addr += 1 + num_bytes;
                             Some(Ok(temp))
                         } else {
                             Some(Err(IncompletePushError { addr: self.addr }))
                         }
-                    }
-                    else {
+                    } else {
                         let temp = EvmInstruction::SingleByte {
                             addr: self.addr,
-                            opcode: opcode
+                            opcode: opcode,
                         };
                         self.addr += 1;
                         Some(Ok(temp))
                     }
-                },
+                }
                 Err(_) => {
                     let temp = EvmInstruction::SingleByte {
                         addr: self.addr,
-                        opcode: EvmOpcode::INVALID
+                        opcode: EvmOpcode::INVALID,
                     };
                     self.addr += 1;
                     Some(Ok(temp))
@@ -1914,20 +2210,24 @@ fn disasm(input: &str) {
                         .map(|i| match i {
                             EvmInstruction::SingleByte { addr, opcode } => {
                                 format!("{:04x}:    {}", addr, opcode)
-                            },
-                            EvmInstruction::MultiByte { addr, opcode, bytes } => {
+                            }
+                            EvmInstruction::MultiByte {
+                                addr,
+                                opcode,
+                                bytes,
+                            } => {
                                 let imm = encode_hex(bytes);
                                 format!("{:04x}:    {} 0x{}", addr, opcode, imm)
-                            },
+                            }
                         })
                         .collect::<Vec<_>>()
                         .join("\n");
                     println!("{}", asm);
-                },
-                Err(e) => println!("{}", e)
+                }
+                Err(e) => println!("{}", e),
             }
         }
-        Err(e) => println!("{:?}", e)
+        Err(e) => println!("{:?}", e),
     }
 }
 
@@ -1950,32 +2250,41 @@ fn evm(input: &str, gas_limit: U256) {
                 let _ = write!(buffer, "{:02x}", byte);
             }
             println!("0x{:}", buffer);
-        },
-        Err(e) => println!("{:?}", e)
+        }
+        Err(e) => println!("{:?}", e),
     };
 }
 
 fn main() {
-    let matches =
-        App::new("Psyche")
-            .subcommand(SubCommand::with_name("evm")
+    let matches = App::new("Psyche")
+        .subcommand(
+            SubCommand::with_name("evm")
                 .about("Run EVM bytecode")
-                .arg(Arg::with_name("CODE")
-                    .index(1)
-                    .required(true)
-                    .help("Contract code as hex (without 0x)"))
-                .arg(Arg::with_name("GAS")
-                    .takes_value(true)
-                    .short("g")
-                    .long("gas")
-                    .help("Supplied gas as decimal")))
-            .subcommand(SubCommand::with_name("disasm")
+                .arg(
+                    Arg::with_name("CODE")
+                        .index(1)
+                        .required(true)
+                        .help("Contract code as hex (without 0x)"),
+                )
+                .arg(
+                    Arg::with_name("GAS")
+                        .takes_value(true)
+                        .short("g")
+                        .long("gas")
+                        .help("Supplied gas as decimal"),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("disasm")
                 .about("Disassemble EVM bytecode")
-                .arg(Arg::with_name("CODE")
-                    .index(1)
-                    .required(true)
-                    .help("Contract code as hex (without 0x)")))
-            .get_matches();
+                .arg(
+                    Arg::with_name("CODE")
+                        .index(1)
+                        .required(true)
+                        .help("Contract code as hex (without 0x)"),
+                ),
+        )
+        .get_matches();
 
     if let Some(matches) = matches.subcommand_matches("disasm") {
         let code = matches.value_of("CODE").unwrap();
@@ -1989,14 +2298,14 @@ fn main() {
                 Ok(temp) => {
                     let mask = ethereum_types::U256::from(u64::max_value());
                     let data: [u64; 4] = [
-                        ((temp >>   0) & mask).as_u64(),
-                        ((temp >>  64) & mask).as_u64(),
+                        ((temp >> 0) & mask).as_u64(),
+                        ((temp >> 64) & mask).as_u64(),
                         ((temp >> 128) & mask).as_u64(),
-                        ((temp >> 192) & mask).as_u64()
+                        ((temp >> 192) & mask).as_u64(),
                     ];
                     gas = U256::from_slice(&data);
                 }
-                Err(err) => println!("Invalid --gas: {:?}", err)
+                Err(err) => println!("Invalid --gas: {:?}", err),
             }
         }
         let code = matches.value_of("CODE").unwrap();
