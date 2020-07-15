@@ -905,7 +905,7 @@ macro_rules! comment {
    ($lit:literal) => (
         #[cfg(feature = "asm-comment")]
         {
-            asm!(concat!("# ", $lit));
+            asm!(concat!("// ", $lit));
         }
     )
 }
