@@ -1024,7 +1024,7 @@ unsafe fn overflowing_sub_word_u128(value: Word, amount: u128) -> (Word, bool) {
         let valuelo = (value1 as u128) << 64 | (value0 as u128);
         let valuehi = (value3 as u128) << 64 | (value2 as u128);
         let (templo, borrowlo) = valuelo.overflowing_sub(amount);
-        let (temphi, borrowhi) = valuelo.overflowing_sub(borrowlo as u128);
+        let (temphi, borrowhi) = valuehi.overflowing_sub(borrowlo as u128);
         let temp0 = templo as u64;
         let temp1 = (templo >> 64) as u64;
         let temp2 = temphi as u64;
