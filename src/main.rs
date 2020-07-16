@@ -1195,6 +1195,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_limit: 
                 //
                 pc += 1;
             }
+            DIV | MOD | SDIV | SMOD | ADDMOD | MULMOD | EXP => unimplemented!(),
             SIGNEXTEND => {
                 comment!("opSIGNEXTEND");
                 let offset = *(stack.sp as *const u32) % 32;
@@ -1207,6 +1208,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_limit: 
                 //
                 pc += 1;
             }
+            LT => unimplemented!(),
             GT => {
                 comment!("opGT");
                 let a = stack.pop_u256();
@@ -1216,6 +1218,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_limit: 
                 //
                 pc += 1;
             }
+            SLT | SGT => unimplemented!(),
             EQ => {
                 comment!("opEQ");
                 let a = stack.pop();
@@ -1292,12 +1295,14 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_limit: 
                 //
                 pc += 1;
             }
+            SHA3 | ADDRESS | BALANCE | ORIGIN | CALLER | CALLVALUE | CALLDATALOAD | CALLDATASIZE | CALLDATACOPY => unimplemented!(), 
             CODESIZE => {
                 comment!("opCODESIZE");
                 stack.push(U256::from_u64(bytecode.len() as u64));
                 //
                 pc += 1;
             }
+            CODECOPY | GASPRICE | EXTCODESIZE | EXTCODECOPY | RETURNDATASIZE | RETURNDATACOPY | BLOCKHASH | COINBASE | TIMESTAMP | BLOCKNUMBER | DIFFICULTY | GASLIMIT => unimplemented!(),
             POP => {
                 comment!("opPOP");
                 stack.pop();
@@ -1331,6 +1336,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_limit: 
                 //
                 pc += 1;
             },
+            SLOAD | SSTORE => unimplemented!(),
             JUMP => {
                 comment!("opJUMP");
                 let addr = stack.pop();
@@ -1492,6 +1498,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_limit: 
                 //
                 pc += 1;
             }
+            LOG0 | LOG1 | LOG2 | LOG3 | LOG4 | CREATE | CALL | CALLCODE => unimplemented!(),
             RETURN => {
                 lldb_hook!(pc, gas, stack, lldb_hook_stop);
                 comment!("opRETURN");
@@ -1500,10 +1507,12 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_limit: 
                 extend_memory!(offset, size, schedule, memory, gas, error);
                 return ReturnData::new(offset.low_u64() as usize, size.low_u64() as usize, 0)
             }
+            DELEGATECALL | STATICCALL | REVERT => unimplemented!(),
             INVALID => {
                 error = VmError::InvalidInstruction;
                 break;
             }
+            SELFDESTRUCT => unimplemented!(),
         }
     }
     if let VmError::None = error {
