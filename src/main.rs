@@ -1295,7 +1295,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_limit: 
                 //
                 pc += 1;
             }
-            SHA3 | ADDRESS | BALANCE | ORIGIN | CALLER | CALLVALUE | CALLDATALOAD | CALLDATASIZE | CALLDATACOPY => unimplemented!(), 
+            SHA3 | ADDRESS | BALANCE | ORIGIN | CALLER | CALLVALUE | CALLDATALOAD | CALLDATASIZE | CALLDATACOPY => unimplemented!(),
             CODESIZE => {
                 comment!("opCODESIZE");
                 stack.push(U256::from_u64(bytecode.len() as u64));
@@ -1819,6 +1819,41 @@ pub fn encode_hex(bytes: &[u8]) -> String {
     temp
 }
 
+macro_rules! test_feature_bit {
+   ($name:ident, $register: ident, $mask:expr) => (
+        fn $name() -> bool {
+            use core::arch::x86_64::__cpuid;
+            #[cfg(target_arch = "x86_64")]
+            {
+                let result = unsafe { __cpuid(1) };
+                return (result.$register & $mask) > 0;
+            }
+            return false;
+        }
+    )
+}
+
+macro_rules! test_extented_feature_bit {
+   ($name:ident, $register: ident, $mask:expr) => (
+        fn $name() -> bool {
+            use core::arch::x86_64::__cpuid_count;
+            #[cfg(target_arch = "x86_64")]
+            {
+                let result = unsafe { __cpuid_count(7, 0) };
+                return (result.$register & $mask) > 0;
+            }
+            return false;
+        }
+    )
+}
+
+test_feature_bit!(may_i_use_Ssse3, ecx, 1 << 9);
+test_extented_feature_bit!(may_i_use_Avx2, ebx, 1 << 5);
+test_extented_feature_bit!(may_i_use_Bmi1, ebx, 1 << 3);
+test_extented_feature_bit!(may_i_use_Bmi2, ebx, 1 << 8);
+test_extented_feature_bit!(may_i_use_Adx, ebx, 1 << 19);
+test_extented_feature_bit!(may_i_use_Avx512f, ebx, 1 << 16);
+
 #[allow(unreachable_code)]
 fn print_config() {
     #[cfg(debug_assertions)]
@@ -1829,15 +1864,15 @@ fn print_config() {
     {
         println!("mode: release");
     }
-    #[cfg(target_feature = "avx2")]
-    {
-        println!("path: AVX2");
-        return;
-    }
-    #[cfg(target_feature = "ssse3")]
-    {
-        println!("path: SSSE3");
-        return;
+    let mut features = vec![];
+    if may_i_use_Ssse3() { features.push("ssse3"); }
+    if may_i_use_Avx2() { features.push("avx2"); }
+    if may_i_use_Bmi1() { features.push("bmi1"); }
+    if may_i_use_Bmi2() { features.push("bmi2"); }
+    if may_i_use_Adx() { features.push("adx"); }
+    if may_i_use_Avx512f() { features.push("avx512f"); }
+    if features.len() > 0 {
+        println!("flags: {}", features.join(" "));
     }
 }
 
@@ -1984,8 +2019,16 @@ fn main() {
                     .index(1)
                     .required(true)
                     .help("Contract code as hex (without 0x)")))
+            .arg(Arg::with_name("verbose")
+                .short("v")
+                .long("verbose")
+                .multiple(true)
+                .help("Sets verbose output"))
             .get_matches();
 
+    if matches.is_present("verbose") {
+        print_config();
+    }
     if let Some(matches) = matches.subcommand_matches("disasm") {
         let code = matches.value_of("CODE").unwrap();
         disasm(code);
