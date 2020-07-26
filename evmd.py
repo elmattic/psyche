@@ -23,7 +23,7 @@ class Disassembly(object):
         args = ["./target/debug/psyche", "disasm", hexstr]
         process = subprocess.Popen(args, stdout=subprocess.PIPE)
         (output, error) = process.communicate()
-        lines = output.split("\n")
+        lines = output.decode("utf-8").split("\n")
         self.instructions = OrderedDict()
         for line in lines:
             if line:
@@ -88,7 +88,7 @@ class EVMDCmd(Cmd):
         stack_start_var = frame.FindVariable("stack_start")
         stack_size = int(frame.FindVariable("stsize").GetValue())
         stackdata = stack_start_var.GetPointeeData(0, stack_size * 32)
-        bytes_str = "".join(map(chr, stackdata.uint8))
+        bytes_str = b"".join(map(lambda x: bytes([x]), stackdata.uint8))
         stack = []
         for i in range(stack_size):
             value = 0
@@ -108,13 +108,13 @@ class EVMDCmd(Cmd):
         #arr = frame.FindVariable("gas").GetChildAtIndex(0)
         #gas = self._u64_array_to_int(arr)
         gas = int(frame.FindVariable("gas").GetValue())
-        hud_str = "pc: {:04x}    gas: {:,}    stsize: {}\nstack: {}"
+        hud_str = "pc: {:04x}    gas: {:,}    stack size: {}\nstack: {}"
         print(hud_str.format(pc, gas, stack_size, stack_str))
 
         # print instructions window
-        index = self.disasm.instructions.keys().index(pc)
+        index = list(self.disasm.instructions).index(pc)
         offset = max(0, index - 4)
-        window = self.disasm.instructions.keys()[offset:]
+        window = list(self.disasm.instructions)[offset:]
         def to_str(k):
             gutter = "-> " if k == pc else "   "
             s = gutter + self.disasm.instructions[k]
