@@ -283,7 +283,7 @@ macro_rules! extend_memory {
             let (new_len, overflow) = {
                 let (temp1, overflow1) = $offset.low_u64().overflowing_add($size.low_u64());
                 let (temp2, overflow2) = temp1.overflowing_add(31);
-                (temp2 / 32, overflow2 | overflow2)
+                (temp2 / 32, overflow1 | overflow2)
             };
             metered_extend!(new_len, overflow, $schedule, $memory, $gas, $error);
         } else {
