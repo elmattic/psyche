@@ -7,11 +7,11 @@ pub struct U256(pub [u64; 4]);
 
 impl U256 {
     pub fn default() -> U256 {
-        return U256 { 0: [0, 0, 0, 0] };
+        U256 { 0: [0, 0, 0, 0] }
     }
 
     pub fn from_slice(value: &[u64]) -> U256 {
-        return U256 { 0: [value[0], value[1], value[2], value[3]] };
+        U256 { 0: [value[0], value[1], value[2], value[3]] }
     }
 
     pub fn from_dec_str(value: &str) -> Result<U256, uint::FromDecStrErr> {
@@ -31,11 +31,15 @@ impl U256 {
     }
 
     pub fn from_u64(value: u64) -> U256 {
-        return U256 { 0: [value, 0, 0, 0] };
+        U256 { 0: [value, 0, 0, 0] }
+    }
+
+    pub fn from_bool(value: bool) -> U256 {
+        U256 { 0: [value as u64, 0, 0, 0] }
     }
 
     pub fn low_u64(&self) -> u64 {
-        return self.0[0];
+        self.0[0]
     }
 
     pub fn low_u128(&self) -> u128 {
@@ -69,6 +73,11 @@ pub struct Word(pub __m256i);
 #[repr(align(32))]
 pub struct Word(pub (__m128i, __m128i));
 
+#[cfg(not(target_feature = "ssse3"))]
+#[derive(Copy, Clone)]
+#[repr(align(32))]
+pub struct Word(pub U256);
+
 impl Word {
     pub unsafe fn as_u256(&self) -> U256 {
         std::mem::transmute::<Word, U256>(*self)
@@ -87,7 +96,10 @@ impl Word {
             return Word((_mm_set_epi64x(value[1] as i64, value[0] as i64),
                          _mm_set_epi64x(value[3] as i64, value[2] as i64)));
         }
-        unimplemented!()
+        #[cfg(not(target_feature = "ssse3"))]
+        {
+            Word(U256::from_slice(value))
+        }
     }
 
     pub unsafe fn from_u64(value: u64) -> Word {
@@ -99,7 +111,10 @@ impl Word {
         {
             return Word((_mm_set_epi64x(0, value as i64), _mm_setzero_si128()));
         }
-        unimplemented!()
+        #[cfg(not(target_feature = "ssse3"))]
+        {
+            Word(U256::from_u64(value))
+        }
     }
 }
 
@@ -117,7 +132,8 @@ pub unsafe fn load_u256(src: *const U256, offset: isize) -> U256 {
         let result = (_mm_load_si128(src), _mm_load_si128(src.offset(1)));
         return std::mem::transmute::<(__m128i, __m128i), U256>(result);
     }
-    return *src;
+    // generic target
+    return *src.offset(offset);
 }
 
 #[allow(unreachable_code)]
@@ -134,7 +150,8 @@ pub unsafe fn loadu_u256(src: *const U256, offset: isize) -> U256 {
         let result = (_mm_loadu_si128(src), _mm_loadu_si128(src.offset(1)));
         return std::mem::transmute::<(__m128i, __m128i), U256>(result);
     }
-    return *src;
+    // generic target
+    return *src.offset(offset);
 }
 
 #[allow(unreachable_code)]
@@ -154,7 +171,8 @@ pub unsafe fn store_u256(dest: *mut U256, value: U256, offset: isize) {
         _mm_store_si128(dest.offset(1), value.1);
         return;
     }
-    *dest = value;
+    // generic target
+    *dest.offset(offset) = value;
 }
 
 #[allow(unreachable_code)]
@@ -174,7 +192,8 @@ pub unsafe fn storeu_u256(dest: *mut U256, value: U256, offset: isize) {
         _mm_storeu_si128(dest.offset(1), value.1);
         return;
     }
-    *dest = value;
+    // generic target
+    *dest.offset(offset) = value;
 }
 
 #[allow(unreachable_code)]
@@ -206,7 +225,18 @@ pub unsafe fn load16_u256(src: *const U256, num_bytes: i32) -> U256 {
         let mask = _mm_cmpeq_epi8(ssum, all_ones);
         return std::mem::transmute::<(__m128i, __m128i), U256>((_mm_and_si128(value, mask), zero));
     }
-    unimplemented!()
+    // generic target
+    let src = src as *const u64;
+    if num_bytes <= 8 {
+        let mask: u64 = (1 << (8 * (num_bytes-0))) - 1;
+        let temp0 = *src.offset(0) & mask;
+        U256([temp0, 0, 0, 0])
+    } else {
+        let mask: u64 = (1 << (8 * (num_bytes-8))) - 1;
+        let temp0 = *src.offset(0);
+        let temp1 = *src.offset(1) & mask;
+        U256([temp0, temp1, 0, 0])
+    }
 }
 
 #[allow(unreachable_code)]
@@ -238,7 +268,22 @@ pub unsafe fn load32_u256(src: *const U256, num_bytes: i32) -> U256 {
         let mask = _mm_cmpeq_epi8(ssum, all_ones);
         return std::mem::transmute::<(__m128i, __m128i), U256>((valuelo, _mm_and_si128(valuehi, mask)));
     }
-    unimplemented!()
+    // generic target
+    let src = src as *const u64;
+    if num_bytes <= 24 {
+        let mask: u64 = (1 << (8 * (num_bytes-16))) - 1;
+        let temp0 = *src.offset(0);
+        let temp1 = *src.offset(1);
+        let temp2 = *src.offset(2) & mask;
+        U256([temp0, temp1, temp2, 0])
+    } else {
+        let mask: u64 = (1 << (8 * (num_bytes-24))) - 1;
+        let temp0 = *src.offset(0);
+        let temp1 = *src.offset(1);
+        let temp2 = *src.offset(2);
+        let temp3 = *src.offset(3) & mask;
+        U256([temp0, temp1, temp2, temp3])
+    }
 }
 
 #[allow(unreachable_code)]
@@ -262,7 +307,8 @@ pub unsafe fn bswap_u256(value: U256) -> U256 {
         let resulthi = _mm_shuffle_epi8(value.0, lane8_id);
         return std::mem::transmute::<(__m128i, __m128i), U256>((resultlo, resulthi));
     }
-    unimplemented!()
+    // generic target
+    U256([value.0[3].swap_bytes(), value.0[2].swap_bytes(), value.0[1].swap_bytes(), value.0[0].swap_bytes()])
 }
 
 #[allow(unreachable_code)]
@@ -285,11 +331,13 @@ pub unsafe fn is_zero_u256(value: U256) -> bool {
         let mask16 = _mm_movemask_epi8(_mm_and_si128(masklo, maskhi));
         return mask16 == 0xffff;
     }
-    unimplemented!()
+    // generic target
+    (value.0[0] == 0) & (value.0[1] == 0) & (value.0[2] == 0) & (value.0[3] == 0)
 }
 
 #[allow(unreachable_code)]
 pub unsafe fn is_ltpow2_u256(value: U256, pow2: usize) -> bool {
+    assert!(pow2.is_power_of_two());
     #[cfg(target_feature = "avx2")]
     {
         let one = _mm256_set_epi64x(0, 0, 0, 1);
@@ -312,7 +360,11 @@ pub unsafe fn is_ltpow2_u256(value: U256, pow2: usize) -> bool {
         let result = is_zero_u256(temp);
         return result;
     }
-    unimplemented!()
+    // generic target
+    let mask = (pow2 as u64) - 1;
+    let temp = U256([value.0[1] & mask, value.0[1], value.0[2], value.0[3]]);
+    let result = is_zero_u256(temp);
+    return result;
 }
 
 unsafe fn broadcast_avx2(value: bool) -> __m256i {
@@ -412,7 +464,9 @@ pub unsafe fn eq_u256(a: U256, b: U256) -> U256 {
         let result = (_mm_set_epi64x(0, bit), _mm_setzero_si128());
         return std::mem::transmute::<(__m128i, __m128i), U256>(result);
     }
-    unimplemented!()
+    // generic target
+    let bit = (a.0[0] == b.0[0]) & (a.0[1] == b.0[1]) & (a.0[2] == b.0[2]) & (a.0[3] == b.0[3]);
+    U256::from_bool(bit)
 }
 
 #[allow(unreachable_code)]
@@ -429,7 +483,9 @@ pub unsafe fn iszero_u256(a: U256) -> U256 {
         let result = (_mm_set_epi64x(0, bit), _mm_setzero_si128());
         return std::mem::transmute::<(__m128i, __m128i), U256>(result);
     }
-    unimplemented!()
+    // generic target
+    let bit = is_zero_u256(a);
+    U256::from_bool(bit)
 }
 
 #[allow(unreachable_code)]
@@ -448,7 +504,8 @@ pub unsafe fn and_u256(a: U256, b: U256) -> U256 {
         let result = (_mm_and_si128(a.0, b.0), _mm_and_si128(a.1, b.1));
         return std::mem::transmute::<(__m128i, __m128i), U256>(result);
     }
-    unimplemented!()
+    // generic target
+    U256([a.0[0] & b.0[0], a.0[1] & b.0[1], a.0[2] & b.0[2], a.0[3] & b.0[3]])
 }
 
 #[allow(unreachable_code)]
@@ -467,7 +524,8 @@ pub unsafe fn or_u256(a: U256, b: U256) -> U256 {
         let result = (_mm_or_si128(a.0, b.0), _mm_or_si128(a.1, b.1));
         return std::mem::transmute::<(__m128i, __m128i), U256>(result);
     }
-    unimplemented!()
+    // generic target
+    U256([a.0[0] | b.0[0], a.0[1] | b.0[1], a.0[2] | b.0[2], a.0[3] | b.0[3]])
 }
 
 #[allow(unreachable_code)]
@@ -486,7 +544,8 @@ pub unsafe fn xor_u256(a: U256, b: U256) -> U256 {
         let result = (_mm_xor_si128(a.0, b.0), _mm_xor_si128(a.1, b.1));
         return std::mem::transmute::<(__m128i, __m128i), U256>(result);
     }
-    unimplemented!()
+    // generic target
+    U256([a.0[0] ^ b.0[0], a.0[1] ^ b.0[1], a.0[2] ^ b.0[2], a.0[3] ^ b.0[3]])
 }
 
 #[allow(unreachable_code)]
@@ -508,7 +567,8 @@ pub unsafe fn not_u256(value: U256) -> U256 {
         let resulthi = _mm_andnot_si128(value.1, all_ones);
         return std::mem::transmute::<(__m128i, __m128i), U256>((resultlo, resulthi));
     }
-    unimplemented!()
+    // generic target
+    U256([!value.0[0], !value.0[1], !value.0[2], !value.0[3]])
 }
 
 #[allow(non_snake_case)]
@@ -784,7 +844,15 @@ pub unsafe fn overflowing_sub_word(value: Word, amount: u64) -> (Word, bool) {
         let result = (resultlo, resulthi);
         return (std::mem::transmute::<(__m128i, __m128i), Word>(result), borrow3);
     }
-    unimplemented!()
+    // generic target
+    #[cfg(not(target_feature = "ssse3"))]
+    {
+        let (temp0, borrow0) = (value.0).0[0].overflowing_sub(amount);
+        let (temp1, borrow1) = (value.0).0[1].overflowing_sub(borrow0 as u64);
+        let (temp2, borrow2) = (value.0).0[2].overflowing_sub(borrow1 as u64);
+        let (temp3, borrow3) = (value.0).0[3].overflowing_sub(borrow2 as u64);
+        return (Word::from_slice(&[temp0, temp1, temp2, temp3]), borrow3);
+    }
 }
 
 #[allow(unreachable_code)]
@@ -831,5 +899,17 @@ pub unsafe fn overflowing_sub_word_u128(value: Word, amount: u128) -> (Word, boo
         let result = (resultlo, resulthi);
         return (std::mem::transmute::<(__m128i, __m128i), Word>(result), borrowhi);
     }
-    unimplemented!()
+    // generic target
+    #[cfg(not(target_feature = "ssse3"))]
+    {
+        let valuelo = ((value.0).0[1] as u128) << 64 | ((value.0).0[0] as u128);
+        let valuehi = ((value.0).0[3] as u128) << 64 | ((value.0).0[2] as u128);
+        let (templo, borrowlo) = valuelo.overflowing_sub(amount);
+        let (temphi, borrowhi) = valuehi.overflowing_sub(borrowlo as u128);
+        let temp0 = templo as u64;
+        let temp1 = (templo >> 64) as u64;
+        let temp2 = temphi as u64;
+        let temp3 = (temphi >> 64) as u64;
+        return (Word::from_slice(&[temp0, temp1, temp2, temp3]), borrowhi);
+    }
 }
