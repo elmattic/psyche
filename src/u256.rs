@@ -196,6 +196,10 @@ pub unsafe fn storeu_u256(dest: *mut U256, value: U256, offset: isize) {
     *dest.offset(offset) = value;
 }
 
+fn bitmask(num_bytes: i32) -> u64 {
+    u64::max_value() >> (64 - 8 * num_bytes)
+}
+
 #[allow(unreachable_code)]
 pub unsafe fn load16_u256(src: *const U256, num_bytes: i32) -> U256 {
     #[cfg(target_feature = "avx2")]
@@ -228,11 +232,11 @@ pub unsafe fn load16_u256(src: *const U256, num_bytes: i32) -> U256 {
     // generic target
     let src = src as *const u64;
     if num_bytes <= 8 {
-        let mask: u64 = (1 << (8 * (num_bytes-0))) - 1;
+        let mask: u64 = bitmask(num_bytes-0);
         let temp0 = *src.offset(0) & mask;
         U256([temp0, 0, 0, 0])
     } else {
-        let mask: u64 = (1 << (8 * (num_bytes-8))) - 1;
+        let mask: u64 = bitmask(num_bytes-8);
         let temp0 = *src.offset(0);
         let temp1 = *src.offset(1) & mask;
         U256([temp0, temp1, 0, 0])
@@ -271,13 +275,13 @@ pub unsafe fn load32_u256(src: *const U256, num_bytes: i32) -> U256 {
     // generic target
     let src = src as *const u64;
     if num_bytes <= 24 {
-        let mask: u64 = (1 << (8 * (num_bytes-16))) - 1;
+        let mask: u64 = bitmask(num_bytes-16);
         let temp0 = *src.offset(0);
         let temp1 = *src.offset(1);
         let temp2 = *src.offset(2) & mask;
         U256([temp0, temp1, temp2, 0])
     } else {
-        let mask: u64 = (1 << (8 * (num_bytes-24))) - 1;
+        let mask: u64 = bitmask(num_bytes-24);
         let temp0 = *src.offset(0);
         let temp1 = *src.offset(1);
         let temp2 = *src.offset(2);
