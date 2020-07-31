@@ -44,6 +44,7 @@ class EVMDCmd(Cmd):
         self.bp_single_step_id = None
         self.bp_stop_id = None
         self.breakpoints = []
+        self.hex_stack_format = False
         self._save_lldb_state()
 
     def __del__(self):
@@ -100,10 +101,14 @@ class EVMDCmd(Cmd):
             stack.append(value)
         stack_str = ""
         slots = 16
-        if stack_size > slots:
-            stack_str += "[..., " + ", ".join(map(str, stack[-slots:])) + "]"
+        if self.hex_stack_format:
+            formatter = lambda v: "0x{:064x}".format(v)
         else:
-            stack_str += str(stack)
+            formatter = lambda v: str(v)
+        if stack_size > slots:
+            stack_str += "[..., " + ", ".join(map(formatter, stack[-slots:])) + "]"
+        else:
+            stack_str += "[" + ", ".join(map(formatter, stack)) + "]"
         pc = int(frame.FindVariable("pc").GetValue())
         #arr = frame.FindVariable("gas").GetChildAtIndex(0)
         #gas = self._u64_array_to_int(arr)
@@ -235,6 +240,24 @@ class EVMDCmd(Cmd):
         process = target.GetProcess()
         err = process.Continue()
         assert err.Success()
+
+        frame = None
+        for thread in process:
+            ID = thread.GetThreadID()
+            if thread.GetStopReason() == lldb.eStopReasonBreakpoint:
+                for f in thread:
+                    assert f.GetThread().GetThreadID() == ID
+                    frame = f.get_parent_frame()
+                    break
+        assert frame
+        self._print_state(frame)
+    
+    def do_hex(self, arg):
+        'Toggle stack formatting between decimal and hexadecimal.'
+        self.hex_stack_format = not self.hex_stack_format 
+        
+        target = self.debugger.GetSelectedTarget()
+        process = target.GetProcess()
 
         frame = None
         for thread in process:
