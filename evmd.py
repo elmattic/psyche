@@ -87,7 +87,8 @@ class EVMDCmd(Cmd):
 
         # print machine registers (pc, gas, stsize, stack)
         stack_start_var = frame.FindVariable("stack_start")
-        stack_size = int(frame.FindVariable("stsize").GetValue())
+        stack_size = int(frame.FindVariable("ssize").GetValue())
+        memory_size = int(frame.FindVariable("msize").GetValue())
         stackdata = stack_start_var.GetPointeeData(0, stack_size * 32)
         bytes_str = b"".join(map(lambda x: bytes([x]), stackdata.uint8))
         stack = []
@@ -113,8 +114,8 @@ class EVMDCmd(Cmd):
         #arr = frame.FindVariable("gas").GetChildAtIndex(0)
         #gas = self._u64_array_to_int(arr)
         gas = int(frame.FindVariable("gas").GetValue())
-        hud_str = "pc: {:04x}    gas: {:,}    stack size: {}\nstack: {}"
-        print(hud_str.format(pc, gas, stack_size, stack_str))
+        hud_str = "pc: {:04x}    gas: {:,}    ssize: {}    msize: {}\nstack: {}"
+        print(hud_str.format(pc, gas, stack_size, memory_size, stack_str))
 
         # print instructions window
         index = list(self.disasm.instructions).index(pc)
@@ -124,7 +125,7 @@ class EVMDCmd(Cmd):
             gutter = "-> " if k == pc else "   "
             s = gutter + self.disasm.instructions[k]
             return s
-        wsize = 11
+        wsize = 17
         print("\n".join(map(to_str, itertools.islice(window, wsize))))
 
     def _print_breakpoints(self, target):

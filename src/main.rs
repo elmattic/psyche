@@ -310,17 +310,18 @@ impl ReturnData {
     }
 }
 
-fn lldb_hook_single_step(pc: usize, gas: u64, stsize: usize) {}
-fn lldb_hook_stop(pc: usize, gas: u64, stsize: usize) {}
+fn lldb_hook_single_step(pc: usize, gas: u64, ssize: usize, msize: usize) {}
+fn lldb_hook_stop(pc: usize, gas: u64, ssize: usize, msize: usize) {}
 
 macro_rules! lldb_hook {
-    ($pc:expr, $gas:expr, $stack:ident, $hook:ident) => {
+    ($pc:expr, $gas:expr, $stack:ident, $memory:ident, $hook:ident) => {
         #[cfg(debug_assertions)]
         {
             let stack_start = $stack.start;
             let gas = $gas.as_u256().low_u64();
-            let stsize = $stack.size();
-            $hook($pc, gas, stsize);
+            let ssize = $stack.size();
+            let msize = $memory.size();
+            $hook($pc, gas, ssize, msize);
         }
     }
 }
@@ -341,11 +342,11 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_limit: 
     }
     loop {
         let opcode = *code.offset(pc as isize);
-        lldb_hook!(pc, gas, stack, lldb_hook_single_step);
+        lldb_hook!(pc, gas, stack, memory, lldb_hook_single_step);
         //println!("{:?}", opcode);
         match opcode {
             STOP => {
-                lldb_hook!(pc, gas, stack, lldb_hook_stop);
+                lldb_hook!(pc, gas, stack, memory, lldb_hook_stop);
                 break;
             },
             ADD => {
@@ -680,7 +681,7 @@ unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_limit: 
             }
             LOG0 | LOG1 | LOG2 | LOG3 | LOG4 | CREATE | CALL | CALLCODE => unimplemented!(),
             RETURN => {
-                lldb_hook!(pc, gas, stack, lldb_hook_stop);
+                lldb_hook!(pc, gas, stack, memory, lldb_hook_stop);
                 comment!("opRETURN");
                 let offset = stack.pop_u256();
                 let size = stack.pop_u256();
