@@ -197,7 +197,8 @@ pub unsafe fn storeu_u256(dest: *mut U256, value: U256, offset: isize) {
 }
 
 fn bitmask(num_bytes: i32) -> u64 {
-    u64::max_value() >> (64 - 8 * num_bytes)
+    let f = -((num_bytes != 0) as i64) as u64;
+    f & u64::max_value().wrapping_shr(64 - 8 * num_bytes as u32)
 }
 
 #[allow(unreachable_code)]
@@ -391,8 +392,22 @@ unsafe fn mm_blendv_epi8(a: __m128i, b: __m128i, mask: __m128i) -> __m128i {
     return _mm_or_si128(_mm_and_si128(b, mask), _mm_andnot_si128(mask, a));
 }
 
+fn blend_u64(a: u64, b: u64, mask: u64) -> u64 {
+    //a ^ ((a ^ b) & mask)
+    (b & mask) | (a & !mask)
+}
+
+fn bitmask_bool(value: bool) -> u64 {
+    let f = value as i64;
+    ((-f) as u64) & u64::max_value()
+}
+
+fn clamp_i32(value: i32, min: i32, max: i32) -> i32 {
+    value.min(max).max(min)
+}
+
 #[allow(unreachable_code)]
-pub unsafe fn signextend_u256(a: U256, b: U256, value: i64) -> U256 {
+pub unsafe fn signextend_u256(a: U256, b: U256, value: u8) -> U256 {
     #[cfg(target_feature = "avx2")]
     {
         let one = _mm256_set_epi64x(0, 0, 0, 1);
@@ -401,7 +416,7 @@ pub unsafe fn signextend_u256(a: U256, b: U256, value: i64) -> U256 {
         //
         let _a = std::mem::transmute::<U256, __m256i>(a);
         let _b = std::mem::transmute::<U256, __m256i>(b);
-        let signbit = _mm_srli_epi16(_mm_set_epi64x(0, value), 7);
+        let signbit = _mm_srli_epi16(_mm_set_epi64x(0, value as i64), 7);
         let signmask8 = _mm_cmpeq_epi8(signbit, _mm256_castsi256_si128(one));
         let signmask = _mm256_broadcastb_epi8(signmask8);
         let alo = _mm256_castsi256_si128(_a);
@@ -423,7 +438,7 @@ pub unsafe fn signextend_u256(a: U256, b: U256, value: i64) -> U256 {
         //
         let _a = std::mem::transmute::<U256, (__m128i, __m128i)>(a);
         let _b = std::mem::transmute::<U256, (__m128i, __m128i)>(b);
-        let signbit = _mm_srli_epi16(_mm_set_epi64x(0, value), 7);
+        let signbit = _mm_srli_epi16(_mm_set_epi64x(0, value as i64), 7);
         let signmask8 = _mm_cmpeq_epi8(signbit, one);
         let signmask = _mm_shuffle_epi8(signmask8, zero);
         let sfloorlo = _mm_adds_epu8(_mm_set_epi64x(0, 255 - 15), _a.0);
@@ -441,7 +456,28 @@ pub unsafe fn signextend_u256(a: U256, b: U256, value: i64) -> U256 {
         let resulthi = mm_blendv_epi8(_b.1, temphi, lt32);
         return std::mem::transmute::<(__m128i, __m128i), U256>((resultlo, resulthi));
     }
-    unimplemented!()
+    // generic target
+    let _a = a.low_u64() & 31;
+    let num_bytes = _a as i32 + 1;
+    let mask0 = bitmask(clamp_i32(num_bytes- 0, 0, 8));
+    let mask1 = bitmask(clamp_i32(num_bytes- 8, 0, 8));
+    let mask2 = bitmask(clamp_i32(num_bytes-16, 0, 8));
+    let mask3 = bitmask(clamp_i32(num_bytes-24, 0, 8));
+    let amount = _a % 8;
+    let signbit = 0x80 << (amount * 8);
+    let index = (_a / 8) as usize;
+    let part = b.0[index & 3] & signbit;
+    let signmask64 = bitmask_bool(part > 0);
+    let temp0 = blend_u64(signmask64, b.0[0], mask0);
+    let temp1 = blend_u64(signmask64, b.0[1], mask1);
+    let temp2 = blend_u64(signmask64, b.0[2], mask2);
+    let temp3 = blend_u64(signmask64, b.0[3], mask3);
+    let lt32 = bitmask_bool(is_ltpow2_u256(a, 32));
+    let result0 = blend_u64(b.0[0], temp0, lt32);
+    let result1 = blend_u64(b.0[1], temp1, lt32);
+    let result2 = blend_u64(b.0[2], temp2, lt32);
+    let result3 = blend_u64(b.0[3], temp3, lt32);
+    U256([result0, result1, result2, result3])
 }
 
 #[allow(unreachable_code)]
