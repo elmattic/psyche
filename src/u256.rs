@@ -38,6 +38,10 @@ impl U256 {
         U256 { 0: [value as u64, 0, 0, 0] }
     }
 
+    pub fn broadcast_u64(value: u64) -> U256 {
+        U256 { 0: [value, value, value, value] }
+    }
+
     pub fn low_u64(&self) -> u64 {
         self.0[0]
     }
@@ -627,12 +631,9 @@ pub unsafe fn shl_u256(count: U256, value: U256) -> U256 {
         //
         let count = std::mem::transmute::<U256, __m256i>(count);
         let value = std::mem::transmute::<U256, __m256i>(value);
-        let hi248 = _mm256_andnot_si256(max_u8, count);
-        let hiisz = broadcast_avx2(is_zero_u256(hi248.as_u256()));
         let mut temp = value;
         let mut current = _mm256_castsi256_si128(count);
-        let mut i = 0;
-        while i < 4 {
+        for _ in 0..4 {
             let slcount = _mm_min_epu8(sixty_four, current);
             let srcount = _mm_subs_epu8(sixty_four, slcount);
             let sltemp = _mm256_sll_epi64(temp, slcount);
@@ -640,8 +641,9 @@ pub unsafe fn shl_u256(count: U256, value: U256) -> U256 {
             let carry = _mm256_permute4x64_epi64(srtemp, _MM_SHUFFLE(2, 1, 0, 3));
             temp = _mm256_or_si256(sltemp, _mm256_andnot_si256(max_u64, carry));
             current = _mm_subs_epu8(current, slcount);
-            i += 1;
         }
+        let hi248 = _mm256_andnot_si256(max_u8, count);
+        let hiisz = broadcast_avx2(is_zero_u256(hi248.as_u256()));
         let result = _mm256_and_si256(temp, hiisz);
         return std::mem::transmute::<__m256i, U256>(result);
     }
@@ -654,13 +656,9 @@ pub unsafe fn shl_u256(count: U256, value: U256) -> U256 {
         //
         let count = std::mem::transmute::<U256, (__m128i, __m128i)>(count);
         let value = std::mem::transmute::<U256, (__m128i, __m128i)>(value);
-        let hi248 = (_mm_andnot_si128(max_u8, count.0), count.1);
-        let hi248 = std::mem::transmute::<(__m128i, __m128i), U256>(hi248);
-        let hiisz = broadcast_sse2(is_zero_u256(hi248));
         let mut temp = value;
         let mut current = count.0;
-        let mut i = 0;
-        while i < 4 {
+        for _ in 0..4 {
             let slcount = _mm_min_epu8(sixty_four, current);
             let srcount = _mm_subs_epu8(sixty_four, slcount);
             let sltemplo = _mm_sll_epi64(temp.0, slcount);
@@ -673,12 +671,36 @@ pub unsafe fn shl_u256(count: U256, value: U256) -> U256 {
             let temphi = _mm_or_si128(sltemphi, carryhi);
             temp = (templo, temphi);
             current = _mm_subs_epu8(current, slcount);
-            i += 1;
         }
+        let hi248 = (_mm_andnot_si128(max_u8, count.0), count.1);
+        let hi248 = std::mem::transmute::<(__m128i, __m128i), U256>(hi248);
+        let hiisz = broadcast_sse2(is_zero_u256(hi248));
         let result = (_mm_and_si128(hiisz, temp.0), _mm_and_si128(hiisz, temp.1));
         return std::mem::transmute::<(__m128i, __m128i), U256>(result);
     }
-    unimplemented!()
+    // generic target
+    let mut temp = value;
+    let mut current = count.low_u64() as i32;
+    for _ in 0..5 {
+        let slcount = current.min(63);
+        let srcount = 63-slcount;
+        let sltemp3 = temp.0[3] << slcount;
+        let sltemp2 = temp.0[2] << slcount;
+        let sltemp1 = temp.0[1] << slcount;
+        let sltemp0 = temp.0[0] << slcount;
+        let srtemp2 = temp.0[2] >> srcount;
+        let srtemp1 = temp.0[1] >> srcount;
+        let srtemp0 = temp.0[0] >> srcount;
+        temp.0[3] = sltemp3 | srtemp2;
+        temp.0[2] = sltemp2 | srtemp1;
+        temp.0[1] = sltemp1 | srtemp0;
+        temp.0[0] = sltemp0;
+        current = (current-slcount).min(0);
+    }
+    let hi248 = U256([count.low_u64() & 0xff, count.0[1], count.0[2], count.0[3]]);
+    let hiisz = U256::broadcast_u64(bitmask_bool(is_zero_u256(hi248)));
+    let result = and_u256(temp, hiisz);
+    result
 }
 
 pub fn overflowing_add_u256(a: U256, b: U256) -> (U256, bool) {
