@@ -8,7 +8,12 @@ import subprocess
 import sys
 from cmd import Cmd
 from collections import namedtuple, OrderedDict
-
+try:
+    # Python 2
+    from future_builtins import filter
+except ImportError:
+    # Python 3
+    pass
 
 Breakpoint = namedtuple('Breakpoint', 'cond id')
 
@@ -215,7 +220,7 @@ class EVMDCmd(Cmd):
                 except ValueError:
                     print("error: Argument must be a breakpoint id.")
                     return
-                bp = next(itertools.ifilter(lambda bp: bp.id == id, self.breakpoints), None)
+                bp = next(filter(lambda bp: bp.id == id, self.breakpoints), None)
                 if bp:
                     target.BreakpointDelete(id)
                     self.breakpoints.remove(bp)
