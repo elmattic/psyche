@@ -20,13 +20,18 @@ Depending what you want to do you can either use:
 - ```cargo build```
 - ```cargo build --release```
 - ```./build_debug.sh``` for an AVX2 build in debug
+- ```./build_release.sh``` for an AVX2 build in release
 - ```./build_avx2.sh``` for inspecting assembly code for AVX2
-  (see target/release/deps/psyche-xxx.s)
+  (see target/release/deps/psyche.s)
 - ```./build_ssse3.sh``` for inspecting assembly code for SSSE3
+- ```./build_generic.sh``` for inspecting generic assembly code
 
 
 Note that a build on macOS enables by default SSSE3 as those instructions are
 always present on all Intel-based Macs.
+
+If you want to inspect assembly code you will also need to uncomment the line
+with ```#![feature(asm)]```.
 
 ## License
 
