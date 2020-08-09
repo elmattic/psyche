@@ -1,0 +1,47 @@
+; this is a single-line comment!
+
+; Psyche assembler supports macros
+%define retword()
+    0h
+    MSTORE
+    20h
+    0h
+    RETURN
+%end
+
+; function-like macro replacement is also supported
+%define jp($label)
+    $label
+    JUMP
+%end
+
+%define jz($label)
+    DUP1
+    ISZERO
+    $label
+    JUMPI
+%end
+
+%define dec()
+    1
+    SWAP1
+    SUB
+%end
+
+; a single-line macro
+%define n() 5
+
+; computes n!
+    1         ; 1
+    n         ; 1 n
+loop:
+    jz(done)
+    SWAP1     ; n 1
+    DUP2      ; n 1 n
+    MUL       ; n 1*n
+    SWAP1     ; 1*n n
+    dec       ; 1*n n-1
+    jp(loop)
+done:
+    POP
+    retword
