@@ -603,8 +603,18 @@ fn flatten_blocks(program: Program) -> Result<Vec<u8>, Error> {
     Ok(bytecode)
 }
 
+const PRELUDE: &str = "
+%define retword()
+    0h
+    MSTORE
+    20h
+    0h
+    RETURN
+%end
+";
+
 pub fn from_string(input: &str) -> Result<Vec<u8>, Error> {
-    let input = format!("{}\n{}", build_opcodes(), input);
+    let input = format!("{}\n{}\n{}", build_opcodes(), PRELUDE, input);
     let result = parse(&input)
         .and_then(expand_macros)
         .and_then(flatten_blocks);
