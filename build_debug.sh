@@ -1,1 +1,1 @@
-cargo --verbose rustc -- -C target-feature=+avx2
+cargo --verbose rustc --lib -- -C target-feature=+avx2,+bmi2
