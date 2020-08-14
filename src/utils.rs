@@ -28,13 +28,7 @@ pub fn encode_hex(bytes: &[u8]) -> String {
 pub fn decode_hex(s: &str) -> Result<Vec<u8>, ParseIntError> {
     (0..s.len())
         .step_by(2)
-        .map(|i| {
-            let temp: Result<u8, _> = u8::from_str_radix(&s[i..i + 2], 16);
-            match temp {
-                Ok(_) => temp,
-                Err(e) => Err(e)
-            }
-        })
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16))
         .collect()
 }
 
