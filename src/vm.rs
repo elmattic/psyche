@@ -373,7 +373,15 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             }
-            LT => unimplemented!(),
+            LT => {
+                comment!("opLT");
+                let a = stack.pop_u256();
+                let b = stack.pop_u256();
+                let result = U256::from_u64(lt_u256(a, b) as u64);
+                stack.push(result);
+                //
+                pc += 1;
+            }
             GT => {
                 comment!("opGT");
                 let a = stack.pop_u256();

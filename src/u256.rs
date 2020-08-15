@@ -844,6 +844,14 @@ pub fn gt_u256(a: U256, b: U256) -> bool {
     (ahi > bhi) | ((ahi == bhi) & (alo > blo))
 }
 
+pub fn lt_u256(a: U256, b: U256) -> bool {
+    let alo = ((a.0[1] as u128) << 64) | (a.0[0] as u128);
+    let blo = ((b.0[1] as u128) << 64) | (b.0[0] as u128);
+    let ahi = ((a.0[3] as u128) << 64) | (a.0[2] as u128);
+    let bhi = ((b.0[3] as u128) << 64) | (b.0[2] as u128);
+    (ahi < bhi) | ((ahi == bhi) & (alo < blo))
+}
+
 // // this is only possible with rust nightly (#15701)
 // macro_rules! mm_extract_epi64 {
 //     ($a:expr, 0) => {
