@@ -63,9 +63,15 @@ impl U256 {
     }
 
     pub fn low_u128(&self) -> u128 {
-        let lo = self.0[0];
-        let hi = self.0[1];
-        lo as u128 | (hi as u128 >> 64)
+        let lo = self.0[0] as u128;
+        let hi = self.0[1] as u128;
+        (hi << 64) | lo
+    }
+
+    pub fn high_u128(&self) -> u128 {
+        let lo = self.0[2] as u128;
+        let hi = self.0[3] as u128;
+        (hi << 64) | lo
     }
 
     pub fn le_u64(&self) -> bool {
@@ -836,20 +842,40 @@ pub fn sub_u256(a: U256, b: U256) -> U256 {
     value
 }
 
+pub fn lt_u256(a: U256, b: U256) -> bool {
+    let alo = a.low_u128();
+    let blo = b.low_u128();
+    let ahi = a.high_u128();
+    let bhi = b.high_u128();
+    (ahi < bhi) | ((ahi == bhi) & (alo < blo))
+}
+
 pub fn gt_u256(a: U256, b: U256) -> bool {
-    let alo = ((a.0[1] as u128) << 64) | (a.0[0] as u128);
-    let blo = ((b.0[1] as u128) << 64) | (b.0[0] as u128);
-    let ahi = ((a.0[3] as u128) << 64) | (a.0[2] as u128);
-    let bhi = ((b.0[3] as u128) << 64) | (b.0[2] as u128);
+    let alo = a.low_u128();
+    let blo = b.low_u128();
+    let ahi = a.high_u128();
+    let bhi = b.high_u128();
     (ahi > bhi) | ((ahi == bhi) & (alo > blo))
 }
 
-pub fn lt_u256(a: U256, b: U256) -> bool {
-    let alo = ((a.0[1] as u128) << 64) | (a.0[0] as u128);
-    let blo = ((b.0[1] as u128) << 64) | (b.0[0] as u128);
-    let ahi = ((a.0[3] as u128) << 64) | (a.0[2] as u128);
-    let bhi = ((b.0[3] as u128) << 64) | (b.0[2] as u128);
-    (ahi < bhi) | ((ahi == bhi) & (alo < blo))
+pub fn slt_u256(a: U256, b: U256) -> bool {
+    let alo = a.low_u128();
+    let blo = b.low_u128();
+    let ahi = a.high_u128();
+    let bhi = b.high_u128();
+    let ahis = ahi as i128;
+    let bhis = bhi as i128;
+    (ahis < bhis) | ((ahi == bhi) & (alo < blo))
+}
+
+pub fn sgt_u256(a: U256, b: U256) -> bool {
+    let alo = a.low_u128();
+    let blo = b.low_u128();
+    let ahi = a.high_u128();
+    let bhi = b.high_u128();
+    let ahis = ahi as i128;
+    let bhis = bhi as i128;
+    (ahis > bhis) | ((ahi == bhi) & (alo > blo))
 }
 
 // // this is only possible with rust nightly (#15701)

@@ -1000,7 +1000,7 @@ mod tests {
         );
     }
 
-    /*#[test]
+    #[test]
     fn opcode_slt_0() {
         vm_assert_eq("
             PUSH1 0x00
@@ -1232,7 +1232,7 @@ mod tests {
             "0000000000000000000000000000000000000000000000000000000000000001",
             None,
         );
-    }*/
+    }
 
     #[test]
     fn opcode_eq_0() {

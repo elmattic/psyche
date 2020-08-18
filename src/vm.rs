@@ -391,7 +391,24 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             }
-            SLT | SGT => unimplemented!(),
+            SLT => {
+                comment!("opSLT");
+                let a = stack.pop_u256();
+                let b = stack.pop_u256();
+                let result = U256::from_u64(slt_u256(a, b) as u64);
+                stack.push(result);
+                //
+                pc += 1;
+            }
+            SGT => {
+                comment!("opSGT");
+                let a = stack.pop_u256();
+                let b = stack.pop_u256();
+                let result = U256::from_u64(sgt_u256(a, b) as u64);
+                stack.push(result);
+                //
+                pc += 1;
+            }
             EQ => {
                 comment!("opEQ");
                 let a = stack.pop();
