@@ -651,7 +651,7 @@ pub unsafe fn shl_u256(count: U256, value: U256) -> U256 {
         let mut current = _mm256_castsi256_si128(count);
         for _ in 0..4 {
             let slcount = _mm_min_epu8(sixty_four, current);
-            let srcount = _mm_subs_epu8(sixty_four, slcount);
+            let srcount = _mm_sub_epi8(sixty_four, slcount);
             let sltemp = _mm256_sll_epi64(temp, slcount);
             let srtemp = _mm256_srl_epi64(temp, srcount);
             let carry = _mm256_permute4x64_epi64(srtemp, _MM_SHUFFLE(2, 1, 0, 3));
@@ -676,7 +676,7 @@ pub unsafe fn shl_u256(count: U256, value: U256) -> U256 {
         let mut current = count.0;
         for _ in 0..4 {
             let slcount = _mm_min_epu8(sixty_four, current);
-            let srcount = _mm_subs_epu8(sixty_four, slcount);
+            let srcount = _mm_sub_epi8(sixty_four, slcount);
             let sltemplo = _mm_sll_epi64(temp.0, slcount);
             let sltemphi = _mm_sll_epi64(temp.1, slcount);
             let srtemplo = _mm_srl_epi64(temp.0, srcount);
