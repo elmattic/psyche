@@ -393,7 +393,7 @@ pub unsafe fn is_ltpow2_u256(value: U256, pow2: usize) -> bool {
     }
     // generic target
     let mask = (pow2 as u64) - 1;
-    let temp = U256([value.0[1] & mask, value.0[1], value.0[2], value.0[3]]);
+    let temp = U256([value.0[1] & !mask, value.0[1], value.0[2], value.0[3]]);
     let result = is_zero_u256(temp);
     return result;
 }
