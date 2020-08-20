@@ -719,7 +719,7 @@ pub unsafe fn shl_u256(count: U256, value: U256) -> U256 {
         temp.0[0] = sltemp0;
         current = (current-slcount).min(0);
     }
-    let hi248 = U256([count.low_u64() & 0xff, count.0[1], count.0[2], count.0[3]]);
+    let hi248 = U256([count.low_u64() & !0xffu64, count.0[1], count.0[2], count.0[3]]);
     let hiisz = U256::broadcast_u64(bitmask_bool(is_zero_u256(hi248)));
     let result = and_u256(temp, hiisz);
     result
