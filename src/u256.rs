@@ -702,24 +702,26 @@ pub unsafe fn shl_u256(count: U256, value: U256) -> U256 {
     }
     // generic target
     let mut temp = value;
-    let mut current = count.low_u64() as i32;
+    let mut current = count.low_u64() as u32;
     for _ in 0..5 {
         let slcount = current.min(63);
-        let srcount = 63-slcount;
+        let srcount = 64-slcount;
+        let sr0count = srcount.min(63);
+        let sr1count = srcount-sr0count;
         let sltemp3 = temp.0[3] << slcount;
         let sltemp2 = temp.0[2] << slcount;
         let sltemp1 = temp.0[1] << slcount;
         let sltemp0 = temp.0[0] << slcount;
-        let srtemp2 = temp.0[2] >> srcount;
-        let srtemp1 = temp.0[1] >> srcount;
-        let srtemp0 = temp.0[0] >> srcount;
+        let srtemp2 = (temp.0[2] >> sr0count) >> sr1count;
+        let srtemp1 = (temp.0[1] >> sr0count) >> sr1count;
+        let srtemp0 = (temp.0[0] >> sr0count) >> sr1count;
         temp.0[3] = sltemp3 | srtemp2;
         temp.0[2] = sltemp2 | srtemp1;
         temp.0[1] = sltemp1 | srtemp0;
         temp.0[0] = sltemp0;
-        current = (current-slcount).min(0);
+        current -= slcount;
     }
-    let hi248 = U256([count.low_u64() & !0xffu64, count.0[1], count.0[2], count.0[3]]);
+    let hi248 = U256([count.0[0] & !0xffu64, count.0[1], count.0[2], count.0[3]]);
     let hiisz = U256::broadcast_u64(bitmask_bool(is_zero_u256(hi248)));
     let result = and_u256(temp, hiisz);
     result
