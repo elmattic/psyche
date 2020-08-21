@@ -17,7 +17,6 @@
 use std::convert::TryFrom;
 
 use crate::instructions::{EvmOpcode, Opcode};
-use crate::instructions::Opcode::*;
 use crate::schedule::{Fee, Schedule};
 use crate::schedule::Fee::*;
 use crate::u256::*;
@@ -329,11 +328,11 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
         lldb_hook!(pc, gas, stack, memory, lldb_hook_single_step);
         //println!("{:?}", opcode);
         match opcode {
-            STOP => {
+            Opcode::STOP => {
                 lldb_hook!(pc, gas, stack, memory, lldb_hook_stop);
                 break;
             },
-            ADD => {
+            Opcode::ADD => {
                 comment!("opADD");
                 let a = stack.pop_u256();
                 let b = stack.pop_u256();
@@ -342,7 +341,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             }
-            MUL => {
+            Opcode::MUL => {
                 comment!("opMUL");
                 let a = stack.pop_u256();
                 let b = stack.pop_u256();
@@ -351,7 +350,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             }
-            SUB => {
+            Opcode::SUB => {
                 comment!("opSUB");
                 let a = stack.pop_u256();
                 let b = stack.pop_u256();
@@ -360,8 +359,8 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             }
-            DIV | MOD | SDIV | SMOD | ADDMOD | MULMOD | EXP => unimplemented!(),
-            SIGNEXTEND => {
+            Opcode::DIV | Opcode::MOD | Opcode::SDIV | Opcode::SMOD | Opcode::ADDMOD | Opcode::MULMOD | Opcode::EXP => unimplemented!(),
+            Opcode::SIGNEXTEND => {
                 comment!("opSIGNEXTEND");
                 let offset = *(stack.sp as *const u32) % 32;
                 let offset = offset as isize;
@@ -373,7 +372,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             }
-            LT => {
+            Opcode::LT => {
                 comment!("opLT");
                 let a = stack.pop_u256();
                 let b = stack.pop_u256();
@@ -382,7 +381,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             }
-            GT => {
+            Opcode::GT => {
                 comment!("opGT");
                 let a = stack.pop_u256();
                 let b = stack.pop_u256();
@@ -391,7 +390,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             }
-            SLT => {
+            Opcode::SLT => {
                 comment!("opSLT");
                 let a = stack.pop_u256();
                 let b = stack.pop_u256();
@@ -400,7 +399,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             }
-            SGT => {
+            Opcode::SGT => {
                 comment!("opSGT");
                 let a = stack.pop_u256();
                 let b = stack.pop_u256();
@@ -409,7 +408,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             }
-            EQ => {
+            Opcode::EQ => {
                 comment!("opEQ");
                 let a = stack.pop();
                 let b = stack.pop();
@@ -418,7 +417,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             }
-            ISZERO => {
+            Opcode::ISZERO => {
                 comment!("opISZERO");
                 let a = stack.pop();
                 let result = iszero_u256(a);
@@ -426,7 +425,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             }
-            AND => {
+            Opcode::AND => {
                 comment!("opAND");
                 let a = stack.pop();
                 let b = stack.pop();
@@ -435,7 +434,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             }
-            OR => {
+            Opcode::OR => {
                 comment!("opOR");
                 let a = stack.pop();
                 let b = stack.pop();
@@ -444,7 +443,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             }
-            XOR => {
+            Opcode::XOR => {
                 comment!("opXOR");
                 let a = stack.pop();
                 let b = stack.pop();
@@ -453,7 +452,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             }
-            NOT => {
+            Opcode::NOT => {
                 comment!("opNOT");
                 let a = stack.pop();
                 let result = not_u256(a);
@@ -461,7 +460,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             }
-            BYTE => {
+            Opcode::BYTE => {
                 comment!("opBYTE");
                 let a = stack.peek();
                 let lt32 = is_ltpow2_u256(a, 32);
@@ -476,7 +475,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             }
-            SHL => {
+            Opcode::SHL => {
                 comment!("opSHL");
                 let a = stack.pop();
                 let b = stack.pop();
@@ -485,22 +484,22 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             }
-            SHR | SAR => unimplemented!(),
-            SHA3 | ADDRESS | BALANCE | ORIGIN | CALLER | CALLVALUE | CALLDATALOAD | CALLDATASIZE | CALLDATACOPY => unimplemented!(),
-            CODESIZE => {
+            Opcode::SHR | Opcode::SAR => unimplemented!(),
+            Opcode::SHA3 | Opcode::ADDRESS | Opcode::BALANCE | Opcode::ORIGIN | Opcode::CALLER | Opcode::CALLVALUE | Opcode::CALLDATALOAD | Opcode::CALLDATASIZE | Opcode::CALLDATACOPY => unimplemented!(),
+            Opcode::CODESIZE => {
                 comment!("opCODESIZE");
                 stack.push(U256::from_u64(bytecode.len() as u64));
                 //
                 pc += 1;
             }
-            CODECOPY | GASPRICE | EXTCODESIZE | EXTCODECOPY | RETURNDATASIZE | RETURNDATACOPY | EXTCODEHASH | BLOCKHASH | COINBASE | TIMESTAMP | NUMBER | DIFFICULTY | GASLIMIT | CHAINID | SELFBALANCE => unimplemented!(),
-            POP => {
+            Opcode::CODECOPY | Opcode::GASPRICE | Opcode::EXTCODESIZE | Opcode::EXTCODECOPY | Opcode::RETURNDATASIZE | Opcode::RETURNDATACOPY | Opcode::EXTCODEHASH | Opcode::BLOCKHASH | Opcode::COINBASE | Opcode::TIMESTAMP | Opcode::NUMBER | Opcode::DIFFICULTY | Opcode::GASLIMIT | Opcode::CHAINID | Opcode::SELFBALANCE => unimplemented!(),
+            Opcode::POP => {
                 comment!("opPOP");
                 stack.pop();
                 //
                 pc += 1;
             }
-            MLOAD => {
+            Opcode::MLOAD => {
                 comment!("opMLOAD");
                 let offset = stack.pop_u256();
                 extend_memory!(offset, 32, schedule, memory, gas, error);
@@ -509,7 +508,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             },
-            MSTORE => {
+            Opcode::MSTORE => {
                 comment!("opMSTORE");
                 let offset = stack.pop_u256();
                 let value = stack.pop();
@@ -518,7 +517,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             },
-            MSTORE8 => {
+            Opcode::MSTORE8 => {
                 comment!("opMSTORE8");
                 let offset = stack.pop_u256();
                 let value = stack.pop().low_u64();
@@ -527,8 +526,8 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             },
-            SLOAD | SSTORE => unimplemented!(),
-            JUMP => {
+            Opcode::SLOAD | Opcode::SSTORE => unimplemented!(),
+            Opcode::JUMP => {
                 comment!("opJUMP");
                 let addr = stack.pop();
                 let in_bounds = is_ltpow2_u256(addr, VmRom::MAX_CODESIZE);
@@ -543,7 +542,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                     break;
                 }
             }
-            JUMPI => {
+            Opcode::JUMPI => {
                 comment!("opJUMPI");
                 let addr = stack.pop();
                 let cond = stack.pop();
@@ -566,21 +565,21 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                     }
                 }
             }
-            PC => {
+            Opcode::PC => {
                 comment!("opPC");
                 let result = U256::from_u64(pc as u64);
                 stack.push(result);
                 //
                 pc += 1;
             }
-            MSIZE => {
+            Opcode::MSIZE => {
                 comment!("opMSIZE");
                 let result = U256::from_u64(memory.size() as u64);
                 stack.push(result);
                 //
                 pc += 1;
             }
-            GAS => {
+            Opcode::GAS => {
                 comment!("opGAS");
                 let result = gas.as_u256();
                 stack.push(result);
@@ -589,13 +588,13 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 check_exception_at!(pc as u64, gas, rom, stack, error);
                 break;
             }
-            JUMPDEST => {
+            Opcode::JUMPDEST => {
                 comment!("opJUMPDEST");
                 //
                 pc += 1;
             }
-            BEGINSUB | RETURNSUB | JUMPSUB => unimplemented!(),
-            PUSH1 => {
+            Opcode::BEGINSUB | Opcode::RETURNSUB | Opcode::JUMPSUB => unimplemented!(),
+            Opcode::PUSH1 => {
                 comment!("opPUSH1");
                 let result = *(code.offset(pc as isize + 1) as *const u8);
                 let result = U256::from_u64(result as u64);
@@ -603,7 +602,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 2;
             }
-            PUSH2 => {
+            Opcode::PUSH2 => {
                 comment!("opPUSH2");
                 let result = *(code.offset(pc as isize + 1) as *const u16);
                 let result = U256::from_u64(result as u64);
@@ -611,7 +610,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 3;
             }
-            PUSH4 => {
+            Opcode::PUSH4 => {
                 comment!("opPUSH4");
                 let result = *(code.offset(pc as isize + 1) as *const u32);
                 let result = U256::from_u64(result as u64);
@@ -619,8 +618,8 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 5;
             }
-            PUSH3 | PUSH5 | PUSH6 | PUSH7 | PUSH8 | PUSH9 | PUSH10 | PUSH11 |
-            PUSH12 | PUSH13 | PUSH14 | PUSH15 | PUSH16 => {
+            Opcode::PUSH3 | Opcode::PUSH5 | Opcode::PUSH6 | Opcode::PUSH7 | Opcode::PUSH8 | Opcode::PUSH9 | Opcode::PUSH10 | Opcode::PUSH11 |
+            Opcode::PUSH12 | Opcode::PUSH13 | Opcode::PUSH14 | Opcode::PUSH15 | Opcode::PUSH16 => {
                 comment!("opPUSH16");
                 let num_bytes = (opcode.push_index() as i32) + 1;
                 let result = load16_u256(code.offset(pc as isize + 1) as *const U256, num_bytes);
@@ -628,9 +627,9 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1 + num_bytes as usize;
             }
-            PUSH17 | PUSH18 | PUSH19 | PUSH20 | PUSH21 | PUSH22 | PUSH23 |
-            PUSH24 | PUSH25 | PUSH26 | PUSH27 | PUSH28 | PUSH29 | PUSH30 |
-            PUSH31 | PUSH32 => {
+            Opcode::PUSH17 | Opcode::PUSH18 | Opcode::PUSH19 | Opcode::PUSH20 | Opcode::PUSH21 | Opcode::PUSH22 | Opcode::PUSH23 |
+            Opcode::PUSH24 | Opcode::PUSH25 | Opcode::PUSH26 | Opcode::PUSH27 | Opcode::PUSH28 | Opcode::PUSH29 | Opcode::PUSH30 |
+            Opcode::PUSH31 | Opcode::PUSH32 => {
                 comment!("opPUSH32");
                 let num_bytes = (opcode.push_index() as i32) + 1;
                 let result = load32_u256(code.offset(pc as isize + 1) as *const U256, num_bytes);
@@ -638,22 +637,22 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1 + num_bytes as usize;
             }
-            DUP1 => {
+            Opcode::DUP1 => {
                 comment!("opDUP1");
                 let result = stack.peek();
                 stack.push(result);
                 //
                 pc += 1;
             }
-            DUP2 => {
+            Opcode::DUP2 => {
                 comment!("opDUP2");
                 let result = stack.peek1();
                 stack.push(result);
                 //
                 pc += 1;
             }
-            DUP3 | DUP4 | DUP5 | DUP6 | DUP7 | DUP8 | DUP9 | DUP10 | DUP11 |
-            DUP12 | DUP13 | DUP14 | DUP15 | DUP16 => {
+            Opcode::DUP3 | Opcode::DUP4 | Opcode::DUP5 | Opcode::DUP6 | Opcode::DUP7 | Opcode::DUP8 | Opcode::DUP9 | Opcode::DUP10 | Opcode::DUP11 |
+            Opcode::DUP12 | Opcode::DUP13 | Opcode::DUP14 | Opcode::DUP15 | Opcode::DUP16 => {
                 comment!("opDUPn");
                 let index = opcode.dup_index();
                 let result = stack.peekn(index);
@@ -661,7 +660,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             }
-            SWAP1 => {
+            Opcode::SWAP1 => {
                 comment!("opSWAP1");
                 let a = stack.pop();
                 let b = stack.pop();
@@ -670,7 +669,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             }
-            SWAP2 => {
+            Opcode::SWAP2 => {
                 comment!("opSWAP2");
                 let value = stack.peek();
                 let prev = stack.set(2, value);
@@ -679,8 +678,8 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             }
-            SWAP3 | SWAP4 | SWAP5 | SWAP6 | SWAP7 | SWAP8 | SWAP9 | SWAP10 |
-            SWAP11 | SWAP12 | SWAP13 | SWAP14 | SWAP15 | SWAP16 => {
+            Opcode::SWAP3 | Opcode::SWAP4 | Opcode::SWAP5 | Opcode::SWAP6 | Opcode::SWAP7 | Opcode::SWAP8 | Opcode::SWAP9 | Opcode::SWAP10 |
+            Opcode::SWAP11 | Opcode::SWAP12 | Opcode::SWAP13 | Opcode::SWAP14 | Opcode::SWAP15 | Opcode::SWAP16 => {
                 comment!("opSWAPn");
                 let value = stack.peek();
                 let index = opcode.swap_index();
@@ -690,8 +689,8 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             }
-            LOG0 | LOG1 | LOG2 | LOG3 | LOG4 | CREATE | CALL | CALLCODE => unimplemented!(),
-            RETURN => {
+            Opcode::LOG0 | Opcode::LOG1 | Opcode::LOG2 | Opcode::LOG3 | Opcode::LOG4 | Opcode::CREATE | Opcode::CALL | Opcode::CALLCODE => unimplemented!(),
+            Opcode::RETURN => {
                 lldb_hook!(pc, gas, stack, memory, lldb_hook_stop);
                 comment!("opRETURN");
                 let offset = stack.pop_u256();
@@ -699,12 +698,12 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 extend_memory!(offset, size, schedule, memory, gas, error);
                 return ReturnData::new(offset.low_u64() as usize, size.low_u64() as usize, 0)
             }
-            DELEGATECALL | CREATE2 | STATICCALL | REVERT => unimplemented!(),
-            INVALID => {
+            Opcode::DELEGATECALL | Opcode::CREATE2 | Opcode::STATICCALL | Opcode::REVERT => unimplemented!(),
+            Opcode::INVALID => {
                 error = VmError::InvalidInstruction;
                 break;
             }
-            SELFDESTRUCT => unimplemented!(),
+            Opcode::SELFDESTRUCT => unimplemented!(),
         }
     }
     if let VmError::None = error {
