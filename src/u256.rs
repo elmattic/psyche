@@ -701,29 +701,36 @@ pub unsafe fn shl_u256(count: U256, value: U256) -> U256 {
         return std::mem::transmute::<(__m128i, __m128i), U256>(result);
     }
     // generic target
-    let mut temp = value;
-    let mut current = count.low_u64() as u32;
-    for _ in 0..5 {
-        let slcount = current.min(63);
-        let srcount = 64-slcount;
-        let sr0count = srcount.min(63);
-        let sr1count = srcount-sr0count;
-        let sltemp3 = temp.0[3] << slcount;
-        let sltemp2 = temp.0[2] << slcount;
-        let sltemp1 = temp.0[1] << slcount;
-        let sltemp0 = temp.0[0] << slcount;
-        let srtemp2 = (temp.0[2] >> sr0count) >> sr1count;
-        let srtemp1 = (temp.0[1] >> sr0count) >> sr1count;
-        let srtemp0 = (temp.0[0] >> sr0count) >> sr1count;
-        temp.0[3] = sltemp3 | srtemp2;
-        temp.0[2] = sltemp2 | srtemp1;
-        temp.0[1] = sltemp1 | srtemp0;
-        temp.0[0] = sltemp0;
-        current -= slcount;
-    }
-    let hi248 = U256([count.0[0] & !0xffu64, count.0[1], count.0[2], count.0[3]]);
+    let count_ = count.low_u64() & 0xff;
+    let word_count = (count_ / 64) as usize;
+    let bit_count = count_ % 64;
+    let padded: [u64; 8] = [0, 0, 0, 0, value.0[0], value.0[1], value.0[2], value.0[3]];
+    let wordsl: [u64; 4] = [
+        padded[4+0-word_count],
+        padded[4+1-word_count],
+        padded[4+2-word_count],
+        padded[4+3-word_count],
+    ];
+    let slcount = bit_count;
+    let srcount = 64-slcount;
+    let sr0count = srcount.min(63);
+    let sr1count = srcount-sr0count;
+    let sltemp3 = wordsl[3] << slcount;
+    let sltemp2 = wordsl[2] << slcount;
+    let sltemp1 = wordsl[1] << slcount;
+    let sltemp0 = wordsl[0] << slcount;
+    let srtemp2 = (wordsl[2] >> sr0count) >> sr1count;
+    let srtemp1 = (wordsl[1] >> sr0count) >> sr1count;
+    let srtemp0 = (wordsl[0] >> sr0count) >> sr1count;
+    let bitsl = U256([
+        sltemp0,
+        sltemp1 | srtemp0,
+        sltemp2 | srtemp1,
+        sltemp3 | srtemp2
+    ]);
+    let hi248 = U256([count.0[0] & !0xff, count.0[1], count.0[2], count.0[3]]);
     let hiisz = U256::broadcast_u64(bitmask_bool(is_zero_u256(hi248)));
-    let result = and_u256(temp, hiisz);
+    let result = and_u256(bitsl, hiisz);
     result
 }
 
