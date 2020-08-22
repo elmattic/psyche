@@ -642,62 +642,84 @@ const fn _MM_SHUFFLE(z: i32, y: i32, x: i32, w: i32) -> i32 {
     (z << 6) | (y << 4) | (x << 2) | w
 }
 
+#[cfg(target_feature = "avx2")]
+unsafe fn _mm256_cmpge_epi32(a: __m256i, b: __m256i) -> __m256i {
+    _mm256_or_si256(_mm256_cmpgt_epi32(a, b), _mm256_cmpeq_epi32(a, b))
+}
+
 #[allow(unreachable_code)]
 pub unsafe fn shl_u256(count: U256, value: U256) -> U256 {
     #[cfg(target_feature = "avx2")]
     {
-        let one = _mm256_set_epi64x(0, 0, 0, 1);
+        let lane32_id = _mm256_set_epi32(7, 6, 5, 4, 3, 2, 1, 0);
         let sixty_four = _mm_set_epi64x(0, 64);
-        let max_u8 = _mm256_sub_epi8(_mm256_setzero_si256(), one);
+        let one = _mm256_set_epi64x(0, 0, 0, 1);
         let max_u64 = _mm256_sub_epi64(_mm256_setzero_si256(), one);
-        //
+        let max_u8 = _mm256_sub_epi8(_mm256_setzero_si256(), one);
+        // word shift
         let count = std::mem::transmute::<U256, __m256i>(count);
         let value = std::mem::transmute::<U256, __m256i>(value);
-        let mut temp = value;
-        let mut current = _mm256_castsi256_si128(count);
-        for _ in 0..4 {
-            let slcount = _mm_min_epu8(sixty_four, current);
-            let srcount = _mm_sub_epi8(sixty_four, slcount);
-            let sltemp = _mm256_sll_epi64(temp, slcount);
-            let srtemp = _mm256_srl_epi64(temp, srcount);
-            let carry = _mm256_permute4x64_epi64(srtemp, _MM_SHUFFLE(2, 1, 0, 3));
-            temp = _mm256_or_si256(sltemp, _mm256_andnot_si256(max_u64, carry));
-            current = _mm_subs_epu8(current, slcount);
-        }
+        let count128 = _mm256_castsi256_si128(count);
+        let co32 = _mm_srli_epi32(count128, 5);
+        let bco32 = _mm256_broadcastd_epi32(co32);
+        let pmask = _mm256_sub_epi32(lane32_id, bco32);
+        let temp = _mm256_permutevar8x32_epi32(value, pmask);
+        // word shift mask
+        let mask = _mm256_cmpge_epi32(lane32_id, bco32);
+        let wordsl = _mm256_and_si256(mask, temp);
+        // bit shift
+        let slcount = _mm_sub_epi32(count128, _mm_slli_epi32(co32, 5));
+        let srcount = _mm_sub_epi32(sixty_four, slcount);
+        let sltemp = _mm256_sll_epi64(wordsl, slcount);
+        let srtemp = _mm256_srl_epi64(wordsl, srcount);
+        let carry = _mm256_permute4x64_epi64(srtemp, _MM_SHUFFLE(2, 1, 0, 3));
+        let bitsl = _mm256_or_si256(sltemp, _mm256_andnot_si256(max_u64, carry));
+        //
         let hi248 = _mm256_andnot_si256(max_u8, count);
         let hiisz = broadcast_avx2(is_zero_u256(hi248.as_u256()));
-        let result = _mm256_and_si256(temp, hiisz);
+        let result = _mm256_and_si256(bitsl, hiisz);
         return std::mem::transmute::<__m256i, U256>(result);
     }
     #[cfg(target_feature = "ssse3")]
     {
         let zero = _mm_setzero_si128();
         let one = _mm_set_epi64x(0, 1);
+        let sixteen = _mm_set_epi64x(0, 16);
         let sixty_four = _mm_set_epi64x(0, 64);
         let max_u8 = _mm_sub_epi8(zero, one);
-        //
+        let lane8_id = _mm_set_epi8(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
+        // word shift
         let count = std::mem::transmute::<U256, (__m128i, __m128i)>(count);
         let value = std::mem::transmute::<U256, (__m128i, __m128i)>(value);
-        let mut temp = value;
-        let mut current = count.0;
-        for _ in 0..4 {
-            let slcount = _mm_min_epu8(sixty_four, current);
-            let srcount = _mm_sub_epi8(sixty_four, slcount);
-            let sltemplo = _mm_sll_epi64(temp.0, slcount);
-            let sltemphi = _mm_sll_epi64(temp.1, slcount);
-            let srtemplo = _mm_srl_epi64(temp.0, srcount);
-            let srtemphi = _mm_srl_epi64(temp.1, srcount);
-            let carrylo = _mm_bslli_si128(srtemplo, 8);
-            let carryhi = _mm_unpacklo_epi64(_mm_bsrli_si128(srtemplo, 8), srtemphi);
-            let templo = _mm_or_si128(sltemplo, carrylo);
-            let temphi = _mm_or_si128(sltemphi, carryhi);
-            temp = (templo, temphi);
-            current = _mm_subs_epu8(current, slcount);
-        }
+        let co8 = _mm_srli_epi32(count.0, 3);
+        let bco8 = _mm_shuffle_epi8(co8, zero);
+        let smask = _mm_sub_epi8(lane8_id, bco8);
+        let templo = _mm_shuffle_epi8(value.0, smask);
+        let temphi = _mm_shuffle_epi8(value.1, smask);
+        // word shift mask and carry
+        let mask = _mm_cmplt_epi8(lane8_id, bco8);
+        let ico8 = _mm_sub_epi8(sixteen, co8);
+        let bico8 = _mm_shuffle_epi8(ico8, zero);
+        let csmask = _mm_add_epi8(lane8_id, bico8);
+        let carry = _mm_shuffle_epi8(value.0, csmask);
+        let wordsllo = mm_blendv_epi8(templo, zero, mask);
+        let wordslhi = mm_blendv_epi8(temphi, carry, mask);
+        // bit shift
+        let slcount = _mm_sub_epi32(count.0, _mm_slli_epi32(co8, 3));
+        let srcount = _mm_sub_epi32(sixty_four, slcount);
+        let sltemplo = _mm_sll_epi64(wordsllo, slcount);
+        let sltemphi = _mm_sll_epi64(wordslhi, slcount);
+        let srtemplo = _mm_srl_epi64(wordsllo, srcount);
+        let srtemphi = _mm_srl_epi64(wordslhi, srcount);
+        let carrylo = _mm_bslli_si128(srtemplo, 8);
+        let carryhi = _mm_unpacklo_epi64(_mm_bsrli_si128(srtemplo, 8), srtemphi);
+        let bitsllo = _mm_or_si128(sltemplo, carrylo);
+        let bitslhi = _mm_or_si128(sltemphi, carryhi);
+        //
         let hi248 = (_mm_andnot_si128(max_u8, count.0), count.1);
         let hi248 = std::mem::transmute::<(__m128i, __m128i), U256>(hi248);
         let hiisz = broadcast_sse2(is_zero_u256(hi248));
-        let result = (_mm_and_si128(hiisz, temp.0), _mm_and_si128(hiisz, temp.1));
+        let result = (_mm_and_si128(hiisz, bitsllo), _mm_and_si128(hiisz, bitslhi));
         return std::mem::transmute::<(__m128i, __m128i), U256>(result);
     }
     // generic target
