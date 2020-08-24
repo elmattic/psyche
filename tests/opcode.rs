@@ -1763,6 +1763,396 @@ mod tests {
         );
     }
 
+    #[test]
+    fn opcode_shl_17() {
+        vm_assert_eq("
+            PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
+            1
+            SHL
+            retword
+            ",
+            "41434547494b4d4f61636567696b6d6f81838587898b8d8fa1a3a5a7a9abadae",
+            None,
+        );
+    }
+
+    #[test]
+    fn opcode_shl_18() {
+        vm_assert_eq("
+            PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
+            136
+            SHL
+            retword
+            ",
+            "c1c2c3c4c5c6c7d0d1d2d3d4d5d6d70000000000000000000000000000000000",
+            None,
+        );
+    }
+
+    #[test]
+    fn opcode_shl_19() {
+        vm_assert_eq("
+            PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
+            248
+            SHL
+            retword
+            ",
+            "d700000000000000000000000000000000000000000000000000000000000000",
+            None,
+        );
+    }
+
+    /*#[test]
+    fn opcode_shr_0() {
+        vm_assert_eq("
+            PUSH32 0x0000000000000000000000000000000000000000000000000000000000000001
+            PUSH1  0x00
+            SHR
+            retword
+            ",
+            "0000000000000000000000000000000000000000000000000000000000000001",
+            None,
+        );
+    }
+
+    #[test]
+    fn opcode_shr_1() {
+        vm_assert_eq("
+            PUSH32 0x0000000000000000000000000000000000000000000000000000000000000001
+            PUSH1  0x01
+            SHR
+            retword
+            ",
+            "0000000000000000000000000000000000000000000000000000000000000000",
+            None,
+        );
+    }
+
+    #[test]
+    fn opcode_shr_2() {
+        vm_assert_eq("
+            PUSH32 0x8000000000000000000000000000000000000000000000000000000000000000
+            PUSH1  0x01
+            SHR
+            retword
+            ",
+            "4000000000000000000000000000000000000000000000000000000000000000",
+            None,
+        );
+    }
+
+    #[test]
+    fn opcode_shr_3() {
+        vm_assert_eq("
+            PUSH32 0x8000000000000000000000000000000000000000000000000000000000000000
+            PUSH1  0xff
+            SHR
+            retword
+            ",
+            "0000000000000000000000000000000000000000000000000000000000000001",
+            None,
+        );
+    }
+
+    #[test]
+    fn opcode_shr_4() {
+        vm_assert_eq("
+            PUSH32 0x8000000000000000000000000000000000000000000000000000000000000000
+            PUSH2  0x0100
+            SHR
+            retword
+            ",
+            "0000000000000000000000000000000000000000000000000000000000000000",
+            None,
+        );
+    }
+
+    #[test]
+    fn opcode_shr_5() {
+        vm_assert_eq("
+            PUSH32 0x8000000000000000000000000000000000000000000000000000000000000000
+            PUSH2  0x0101
+            SHR
+            retword
+            ",
+            "0000000000000000000000000000000000000000000000000000000000000000",
+            None,
+        );
+    }
+
+    #[test]
+    fn opcode_shr_6() {
+        vm_assert_eq("
+            PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+            PUSH1  0x00
+            SHR
+            retword
+            ",
+            "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            None,
+        );
+    }
+
+    #[test]
+    fn opcode_shr_7() {
+        vm_assert_eq("
+            PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+            PUSH1  0x01
+            SHR
+            retword
+            ",
+            "7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            None,
+        );
+    }
+
+    #[test]
+    fn opcode_shr_8() {
+        vm_assert_eq("
+            PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+            PUSH1  0xff
+            SHR
+            retword
+            ",
+            "0000000000000000000000000000000000000000000000000000000000000001",
+            None,
+        );
+    }
+
+    #[test]
+    fn opcode_shr_9() {
+        vm_assert_eq("
+            PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+            PUSH2  0x0100
+            SHR
+            retword
+            ",
+            "0000000000000000000000000000000000000000000000000000000000000000",
+            None,
+        );
+    }
+
+    #[test]
+    fn opcode_shr_10() {
+        vm_assert_eq("
+            PUSH32 0x0000000000000000000000000000000000000000000000000000000000000000
+            PUSH1  0x01
+            SHR
+            retword
+            ",
+            "0000000000000000000000000000000000000000000000000000000000000000",
+            None,
+        );
+    }
+
+    #[test]
+    fn opcode_sar_0() {
+        vm_assert_eq("
+            PUSH32 0x0000000000000000000000000000000000000000000000000000000000000001
+            PUSH1  0x00
+            SAR
+            retword
+            ",
+            "0000000000000000000000000000000000000000000000000000000000000001",
+            None,
+        );
+    }
+
+    #[test]
+    fn opcode_sar_1() {
+        vm_assert_eq("
+            PUSH32 0x0000000000000000000000000000000000000000000000000000000000000001
+            PUSH1  0x01
+            SAR
+            retword
+            ",
+            "0000000000000000000000000000000000000000000000000000000000000000",
+            None,
+        );
+    }
+
+    #[test]
+    fn opcode_sar_2() {
+        vm_assert_eq("
+            PUSH32 0x8000000000000000000000000000000000000000000000000000000000000000
+            PUSH1  0x01
+            SAR
+            retword
+            ",
+            "c000000000000000000000000000000000000000000000000000000000000000",
+            None,
+        );
+    }
+
+    #[test]
+    fn opcode_sar_3() {
+        vm_assert_eq("
+            PUSH32 0x8000000000000000000000000000000000000000000000000000000000000000
+            PUSH1  0xff
+            SAR
+            retword
+            ",
+            "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            None,
+        );
+    }
+
+    #[test]
+    fn opcode_sar_4() {
+        vm_assert_eq("
+            PUSH32 0x8000000000000000000000000000000000000000000000000000000000000000
+            PUSH2  0x0100
+            SAR
+            retword
+            ",
+            "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            None,
+        );
+    }
+
+    #[test]
+    fn opcode_sar_5() {
+        vm_assert_eq("
+            PUSH32 0x8000000000000000000000000000000000000000000000000000000000000000
+            PUSH2  0x0101
+            SAR
+            retword
+            ",
+            "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            None,
+        );
+    }
+
+    #[test]
+    fn opcode_sar_6() {
+        vm_assert_eq("
+            PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+            PUSH1  0x00
+            SAR
+            retword
+            ",
+            "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            None,
+        );
+    }
+
+    #[test]
+    fn opcode_sar_7() {
+        vm_assert_eq("
+            PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+            PUSH1  0x01
+            SAR
+            retword
+            ",
+            "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            None,
+        );
+    }
+
+    #[test]
+    fn opcode_sar_8() {
+        vm_assert_eq("
+            PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+            PUSH1  0xff
+            SAR
+            retword
+            ",
+            "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            None,
+        );
+    }
+
+    #[test]
+    fn opcode_sar_9() {
+        vm_assert_eq("
+            PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+            PUSH2  0x0100
+            SAR
+            retword
+            ",
+            "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+            None,
+        );
+    }
+
+    #[test]
+    fn opcode_sar_10() {
+        vm_assert_eq("
+            PUSH32 0x0000000000000000000000000000000000000000000000000000000000000000
+            PUSH1  0x01
+            SAR
+            retword
+            ",
+            "0000000000000000000000000000000000000000000000000000000000000000",
+            None,
+        );
+    }
+
+    #[test]
+    fn opcode_sar_11() {
+        vm_assert_eq("
+            PUSH32 0x4000000000000000000000000000000000000000000000000000000000000000
+            PUSH1  0xfe
+            SAR
+            retword
+            ",
+            "0000000000000000000000000000000000000000000000000000000000000001",
+            None,
+        );
+    }
+
+    #[test]
+    fn opcode_sar_12() {
+        vm_assert_eq("
+            PUSH32 0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+            PUSH1  0xf8
+            SAR
+            retword
+            ",
+            "000000000000000000000000000000000000000000000000000000000000007f",
+            None,
+        );
+    }
+
+    #[test]
+    fn opcode_sar_13() {
+        vm_assert_eq("
+            PUSH32 0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+            PUSH1  0xfe
+            SAR
+            retword
+            ",
+            "0000000000000000000000000000000000000000000000000000000000000001",
+            None,
+        );
+    }
+
+    #[test]
+    fn opcode_sar_14() {
+        vm_assert_eq("
+            PUSH32 0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+            PUSH1  0xff
+            SAR
+            retword
+            ",
+            "0000000000000000000000000000000000000000000000000000000000000000",
+            None,
+        );
+    }
+
+    #[test]
+    fn opcode_sar_15() {
+        vm_assert_eq("
+            PUSH32 0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+            PUSH2  0x0100
+            SAR
+            retword
+            ",
+            "0000000000000000000000000000000000000000000000000000000000000000",
+            None,
+        );
+    }*/
+
     /*#[test]
     fn opcode_sha3_0() {
         vm_assert_eq("
