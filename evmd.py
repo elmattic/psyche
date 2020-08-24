@@ -95,7 +95,7 @@ class EVMDCmd(Cmd):
         stack_size = int(frame.FindVariable("ssize").GetValue())
         memory_size = int(frame.FindVariable("msize").GetValue())
         stackdata = stack_start_var.GetPointeeData(0, stack_size * 32)
-        bytes_str = b"".join(map(lambda x: bytes([x]), stackdata.uint8))
+        bytes_str = b"".join(map(lambda x: bytes(bytearray([x])), stackdata.uint8))
         stack = []
         for i in range(stack_size):
             value = 0
@@ -257,11 +257,11 @@ class EVMDCmd(Cmd):
                     break
         assert frame
         self._print_state(frame)
-    
+
     def do_hex(self, arg):
         'Toggle stack formatting between decimal and hexadecimal.'
-        self.hex_stack_format = not self.hex_stack_format 
-        
+        self.hex_stack_format = not self.hex_stack_format
+
         target = self.debugger.GetSelectedTarget()
         process = target.GetProcess()
 
