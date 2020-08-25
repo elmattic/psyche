@@ -647,6 +647,50 @@ unsafe fn _mm256_cmpge_epi32(a: __m256i, b: __m256i) -> __m256i {
     _mm256_or_si256(_mm256_cmpgt_epi32(a, b), _mm256_cmpeq_epi32(a, b))
 }
 
+#[cfg(target_feature = "ssse3")]
+unsafe fn bshl_ssse3(value: (__m128i, __m128i), count: __m128i) -> (__m128i, __m128i) {
+    let zero = _mm_setzero_si128();
+    let sixteen = _mm_set_epi64x(0, 16);
+    let lane8_id = _mm_set_epi8(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
+    // byte shift
+    let bcount = _mm_shuffle_epi8(count, zero);
+    let smask = _mm_sub_epi8(lane8_id, bcount);
+    let templo = _mm_shuffle_epi8(value.0, smask);
+    let temphi = _mm_shuffle_epi8(value.1, smask);
+    // byte shift mask and carry
+    let mask = _mm_cmplt_epi8(lane8_id, bcount);
+    let icount = _mm_sub_epi8(sixteen, count);
+    let bicount = _mm_shuffle_epi8(icount, zero);
+    let csmask = _mm_add_epi8(lane8_id, bicount);
+    let carry = _mm_shuffle_epi8(value.0, csmask);
+    let resultlo = templo;
+    let resulthi = _mm_or_si128(temphi, _mm_and_si128(carry, mask));
+    return (resultlo, resulthi)
+}
+
+#[cfg(target_feature = "ssse3")]
+unsafe fn bshr_ssse3(value: (__m128i, __m128i), count: __m128i) -> (__m128i, __m128i) {
+    let zero = _mm_setzero_si128();
+    let sixteen = _mm_set_epi64x(0, 16);
+    let lane8_id = _mm_set_epi8(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
+    let lane8_ceil0_id = _mm_add_epi8(lane8_id, _mm_shuffle_epi8(_mm_set_epi64x(0, 16*7), zero));
+    let lane8_ceil1_id = _mm_add_epi8(lane8_id, _mm_shuffle_epi8(_mm_set_epi64x(0, 16*6), zero));
+    // byte shift
+    let bcount = _mm_shuffle_epi8(count, zero);
+    let smask = _mm_add_epi8(lane8_ceil0_id, bcount);
+    let templo = _mm_shuffle_epi8(value.0, smask);
+    let temphi = _mm_shuffle_epi8(value.1, smask);
+    // byte shift mask and carry
+    let icount = _mm_sub_epi8(sixteen, count);
+    let bicount = _mm_shuffle_epi8(icount, zero);
+    let mask = _mm_cmplt_epi8(lane8_id, bicount);
+    let csmask = _mm_add_epi8(lane8_ceil1_id, bcount);
+    let carry = _mm_shuffle_epi8(value.1, csmask);
+    let resulthi = temphi;
+    let resultlo = _mm_or_si128(templo, _mm_andnot_si128(mask, carry));
+    return (resultlo, resulthi)
+}
+
 #[allow(unreachable_code)]
 pub unsafe fn shl_u256(count: U256, value: U256) -> U256 {
     #[cfg(target_feature = "avx2")]
@@ -684,26 +728,13 @@ pub unsafe fn shl_u256(count: U256, value: U256) -> U256 {
     {
         let zero = _mm_setzero_si128();
         let one = _mm_set_epi64x(0, 1);
-        let sixteen = _mm_set_epi64x(0, 16);
         let sixty_four = _mm_set_epi64x(0, 64);
         let max_u8 = _mm_sub_epi8(zero, one);
-        let lane8_id = _mm_set_epi8(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
         // word shift
         let count = std::mem::transmute::<U256, (__m128i, __m128i)>(count);
         let value = std::mem::transmute::<U256, (__m128i, __m128i)>(value);
         let co8 = _mm_srli_epi32(count.0, 3);
-        let bco8 = _mm_shuffle_epi8(co8, zero);
-        let smask = _mm_sub_epi8(lane8_id, bco8);
-        let templo = _mm_shuffle_epi8(value.0, smask);
-        let temphi = _mm_shuffle_epi8(value.1, smask);
-        // word shift mask and carry
-        let mask = _mm_cmplt_epi8(lane8_id, bco8);
-        let ico8 = _mm_sub_epi8(sixteen, co8);
-        let bico8 = _mm_shuffle_epi8(ico8, zero);
-        let csmask = _mm_add_epi8(lane8_id, bico8);
-        let carry = _mm_shuffle_epi8(value.0, csmask);
-        let wordsllo = mm_blendv_epi8(templo, zero, mask);
-        let wordslhi = mm_blendv_epi8(temphi, carry, mask);
+        let (wordsllo, wordslhi) = bshl_ssse3(value, co8);
         // bit shift
         let slcount = _mm_sub_epi32(count.0, _mm_slli_epi32(co8, 3));
         let srcount = _mm_sub_epi32(sixty_four, slcount);
@@ -1054,5 +1085,159 @@ pub unsafe fn overflowing_sub_word_u128(value: Word, amount: u128) -> (Word, boo
         let temp2 = temphi as u64;
         let temp3 = (temphi >> 64) as u64;
         return (Word::from_slice(&[temp0, temp1, temp2, temp3]), borrowhi);
+    }
+}
+
+#[cfg(target_feature = "ssse3")]
+fn assert_word_eq(a: (__m128i, __m128i), b: (__m128i, __m128i)) {
+    unsafe {
+        assert_eq!(mm_extract_epi64(a.0, 0), mm_extract_epi64(b.0, 0));
+        assert_eq!(mm_extract_epi64(a.0, 1), mm_extract_epi64(b.0, 1));
+        assert_eq!(mm_extract_epi64(a.1, 0), mm_extract_epi64(b.1, 0));
+        assert_eq!(mm_extract_epi64(a.1, 1), mm_extract_epi64(b.1, 1));
+    }
+}
+
+#[cfg(target_feature = "ssse3")]
+#[test]
+fn test_bshl_ssse3() {
+    unsafe {
+        let i = (_mm_set_epi64x(0xc0c1c2c3c4c5c6c7u64 as i64, 0xd0d1d2d3d4d5d6d7u64 as i64), _mm_set_epi64x(0xa0a1a2a3a4a5a6a7u64 as i64, 0xb0b1b2b3b4b5b6b7u64 as i64));
+        let o = (_mm_set_epi64x(0xc0c1c2c3c4c5c6c7u64 as i64, 0xd0d1d2d3d4d5d6d7u64 as i64), _mm_set_epi64x(0xa0a1a2a3a4a5a6a7u64 as i64, 0xb0b1b2b3b4b5b6b7u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 0)), o);
+        let o = (_mm_set_epi64x(0xc1c2c3c4c5c6c7d0u64 as i64, 0xd1d2d3d4d5d6d700u64 as i64), _mm_set_epi64x(0xa1a2a3a4a5a6a7b0u64 as i64, 0xb1b2b3b4b5b6b7c0u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 1)), o);
+        let o = (_mm_set_epi64x(0xc2c3c4c5c6c7d0d1u64 as i64, 0xd2d3d4d5d6d70000u64 as i64), _mm_set_epi64x(0xa2a3a4a5a6a7b0b1u64 as i64, 0xb2b3b4b5b6b7c0c1u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 2)), o);
+        let o = (_mm_set_epi64x(0xc3c4c5c6c7d0d1d2u64 as i64, 0xd3d4d5d6d7000000u64 as i64), _mm_set_epi64x(0xa3a4a5a6a7b0b1b2u64 as i64, 0xb3b4b5b6b7c0c1c2u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 3)), o);
+        let o = (_mm_set_epi64x(0xc4c5c6c7d0d1d2d3u64 as i64, 0xd4d5d6d700000000u64 as i64), _mm_set_epi64x(0xa4a5a6a7b0b1b2b3u64 as i64, 0xb4b5b6b7c0c1c2c3u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 4)), o);
+        let o = (_mm_set_epi64x(0xc5c6c7d0d1d2d3d4u64 as i64, 0xd5d6d70000000000u64 as i64), _mm_set_epi64x(0xa5a6a7b0b1b2b3b4u64 as i64, 0xb5b6b7c0c1c2c3c4u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 5)), o);
+        let o = (_mm_set_epi64x(0xc6c7d0d1d2d3d4d5u64 as i64, 0xd6d7000000000000u64 as i64), _mm_set_epi64x(0xa6a7b0b1b2b3b4b5u64 as i64, 0xb6b7c0c1c2c3c4c5u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 6)), o);
+        let o = (_mm_set_epi64x(0xc7d0d1d2d3d4d5d6u64 as i64, 0xd700000000000000u64 as i64), _mm_set_epi64x(0xa7b0b1b2b3b4b5b6u64 as i64, 0xb7c0c1c2c3c4c5c6u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 7)), o);
+        let o = (_mm_set_epi64x(0xd0d1d2d3d4d5d6d7u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xb0b1b2b3b4b5b6b7u64 as i64, 0xc0c1c2c3c4c5c6c7u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 8)), o);
+        let o = (_mm_set_epi64x(0xd1d2d3d4d5d6d700u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xb1b2b3b4b5b6b7c0u64 as i64, 0xc1c2c3c4c5c6c7d0u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 9)), o);
+        let o = (_mm_set_epi64x(0xd2d3d4d5d6d70000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xb2b3b4b5b6b7c0c1u64 as i64, 0xc2c3c4c5c6c7d0d1u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 10)), o);
+        let o = (_mm_set_epi64x(0xd3d4d5d6d7000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xb3b4b5b6b7c0c1c2u64 as i64, 0xc3c4c5c6c7d0d1d2u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 11)), o);
+        let o = (_mm_set_epi64x(0xd4d5d6d700000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xb4b5b6b7c0c1c2c3u64 as i64, 0xc4c5c6c7d0d1d2d3u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 12)), o);
+        let o = (_mm_set_epi64x(0xd5d6d70000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xb5b6b7c0c1c2c3c4u64 as i64, 0xc5c6c7d0d1d2d3d4u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 13)), o);
+        let o = (_mm_set_epi64x(0xd6d7000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xb6b7c0c1c2c3c4c5u64 as i64, 0xc6c7d0d1d2d3d4d5u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 14)), o);
+        let o = (_mm_set_epi64x(0xd700000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xb7c0c1c2c3c4c5c6u64 as i64, 0xc7d0d1d2d3d4d5d6u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 15)), o);
+        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xc0c1c2c3c4c5c6c7u64 as i64, 0xd0d1d2d3d4d5d6d7u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 16)), o);
+        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xc1c2c3c4c5c6c7d0u64 as i64, 0xd1d2d3d4d5d6d700u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 17)), o);
+        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xc2c3c4c5c6c7d0d1u64 as i64, 0xd2d3d4d5d6d70000u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 18)), o);
+        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xc3c4c5c6c7d0d1d2u64 as i64, 0xd3d4d5d6d7000000u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 19)), o);
+        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xc4c5c6c7d0d1d2d3u64 as i64, 0xd4d5d6d700000000u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 20)), o);
+        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xc5c6c7d0d1d2d3d4u64 as i64, 0xd5d6d70000000000u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 21)), o);
+        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xc6c7d0d1d2d3d4d5u64 as i64, 0xd6d7000000000000u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 22)), o);
+        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xc7d0d1d2d3d4d5d6u64 as i64, 0xd700000000000000u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 23)), o);
+        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xd0d1d2d3d4d5d6d7u64 as i64, 0x0000000000000000u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 24)), o);
+        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xd1d2d3d4d5d6d700u64 as i64, 0x0000000000000000u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 25)), o);
+        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xd2d3d4d5d6d70000u64 as i64, 0x0000000000000000u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 26)), o);
+        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xd3d4d5d6d7000000u64 as i64, 0x0000000000000000u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 27)), o);
+        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xd4d5d6d700000000u64 as i64, 0x0000000000000000u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 28)), o);
+        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xd5d6d70000000000u64 as i64, 0x0000000000000000u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 29)), o);
+        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xd6d7000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 30)), o);
+        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xd700000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 31)), o);
+    }
+}
+
+#[cfg(target_feature = "ssse3")]
+#[test]
+fn test_bshr_ssse3() {
+    unsafe {
+        let i = (_mm_set_epi64x(0xc0c1c2c3c4c5c6c7u64 as i64, 0xd0d1d2d3d4d5d6d7u64 as i64), _mm_set_epi64x(0xa0a1a2a3a4a5a6a7u64 as i64, 0xb0b1b2b3b4b5b6b7u64 as i64));
+        let o = (_mm_set_epi64x(0xc0c1c2c3c4c5c6c7u64 as i64, 0xd0d1d2d3d4d5d6d7u64 as i64), _mm_set_epi64x(0xa0a1a2a3a4a5a6a7u64 as i64, 0xb0b1b2b3b4b5b6b7u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 0)), o);
+        let o = (_mm_set_epi64x(0xb7c0c1c2c3c4c5c6u64 as i64, 0xc7d0d1d2d3d4d5d6u64 as i64), _mm_set_epi64x(0x00a0a1a2a3a4a5a6u64 as i64, 0xa7b0b1b2b3b4b5b6u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 1)), o);
+        let o = (_mm_set_epi64x(0xb6b7c0c1c2c3c4c5u64 as i64, 0xc6c7d0d1d2d3d4d5u64 as i64), _mm_set_epi64x(0x0000a0a1a2a3a4a5u64 as i64, 0xa6a7b0b1b2b3b4b5u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 2)), o);
+        let o = (_mm_set_epi64x(0xb5b6b7c0c1c2c3c4u64 as i64, 0xc5c6c7d0d1d2d3d4u64 as i64), _mm_set_epi64x(0x000000a0a1a2a3a4u64 as i64, 0xa5a6a7b0b1b2b3b4u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 3)), o);
+        let o = (_mm_set_epi64x(0xb4b5b6b7c0c1c2c3u64 as i64, 0xc4c5c6c7d0d1d2d3u64 as i64), _mm_set_epi64x(0x00000000a0a1a2a3u64 as i64, 0xa4a5a6a7b0b1b2b3u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 4)), o);
+        let o = (_mm_set_epi64x(0xb3b4b5b6b7c0c1c2u64 as i64, 0xc3c4c5c6c7d0d1d2u64 as i64), _mm_set_epi64x(0x0000000000a0a1a2u64 as i64, 0xa3a4a5a6a7b0b1b2u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 5)), o);
+        let o = (_mm_set_epi64x(0xb2b3b4b5b6b7c0c1u64 as i64, 0xc2c3c4c5c6c7d0d1u64 as i64), _mm_set_epi64x(0x000000000000a0a1u64 as i64, 0xa2a3a4a5a6a7b0b1u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 6)), o);
+        let o = (_mm_set_epi64x(0xb1b2b3b4b5b6b7c0u64 as i64, 0xc1c2c3c4c5c6c7d0u64 as i64), _mm_set_epi64x(0x00000000000000a0u64 as i64, 0xa1a2a3a4a5a6a7b0u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 7)), o);
+        let o = (_mm_set_epi64x(0xb0b1b2b3b4b5b6b7u64 as i64, 0xc0c1c2c3c4c5c6c7u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0xa0a1a2a3a4a5a6a7u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 8)), o);
+        let o = (_mm_set_epi64x(0xa7b0b1b2b3b4b5b6u64 as i64, 0xb7c0c1c2c3c4c5c6u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x00a0a1a2a3a4a5a6u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 9)), o);
+        let o = (_mm_set_epi64x(0xa6a7b0b1b2b3b4b5u64 as i64, 0xb6b7c0c1c2c3c4c5u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000a0a1a2a3a4a5u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 10)), o);
+        let o = (_mm_set_epi64x(0xa5a6a7b0b1b2b3b4u64 as i64, 0xb5b6b7c0c1c2c3c4u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x000000a0a1a2a3a4u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 11)), o);
+        let o = (_mm_set_epi64x(0xa4a5a6a7b0b1b2b3u64 as i64, 0xb4b5b6b7c0c1c2c3u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x00000000a0a1a2a3u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 12)), o);
+        let o = (_mm_set_epi64x(0xa3a4a5a6a7b0b1b2u64 as i64, 0xb3b4b5b6b7c0c1c2u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000a0a1a2u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 13)), o);
+        let o = (_mm_set_epi64x(0xa2a3a4a5a6a7b0b1u64 as i64, 0xb2b3b4b5b6b7c0c1u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x000000000000a0a1u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 14)), o);
+        let o = (_mm_set_epi64x(0xa1a2a3a4a5a6a7b0u64 as i64, 0xb1b2b3b4b5b6b7c0u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x00000000000000a0u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 15)), o);
+        let o = (_mm_set_epi64x(0xa0a1a2a3a4a5a6a7u64 as i64, 0xb0b1b2b3b4b5b6b7u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 16)), o);
+        let o = (_mm_set_epi64x(0x00a0a1a2a3a4a5a6u64 as i64, 0xa7b0b1b2b3b4b5b6u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 17)), o);
+        let o = (_mm_set_epi64x(0x0000a0a1a2a3a4a5u64 as i64, 0xa6a7b0b1b2b3b4b5u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 18)), o);
+        let o = (_mm_set_epi64x(0x000000a0a1a2a3a4u64 as i64, 0xa5a6a7b0b1b2b3b4u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 19)), o);
+        let o = (_mm_set_epi64x(0x00000000a0a1a2a3u64 as i64, 0xa4a5a6a7b0b1b2b3u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 20)), o);
+        let o = (_mm_set_epi64x(0x0000000000a0a1a2u64 as i64, 0xa3a4a5a6a7b0b1b2u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 21)), o);
+        let o = (_mm_set_epi64x(0x000000000000a0a1u64 as i64, 0xa2a3a4a5a6a7b0b1u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 22)), o);
+        let o = (_mm_set_epi64x(0x00000000000000a0u64 as i64, 0xa1a2a3a4a5a6a7b0u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 23)), o);
+        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0xa0a1a2a3a4a5a6a7u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 24)), o);
+        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x00a0a1a2a3a4a5a6u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 25)), o);
+        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000a0a1a2a3a4a5u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 26)), o);
+        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x000000a0a1a2a3a4u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 27)), o);
+        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x00000000a0a1a2a3u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 28)), o);
+        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000a0a1a2u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 29)), o);
+        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x000000000000a0a1u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 30)), o);
+        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x00000000000000a0u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 31)), o);
     }
 }
