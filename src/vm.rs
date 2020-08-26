@@ -742,13 +742,9 @@ impl VmRom {
     /// EIP-170 states a max contract code size of 2**14 + 2**13, we round it
     /// to the next power of two.
     const MAX_CODESIZE: usize = 32768;
-
     const JUMPDESTS_SIZE: usize = VmRom::MAX_CODESIZE / 8;
-
     const BB_INFOS_SIZE: usize = VmRom::MAX_CODESIZE * std::mem::size_of::<BbInfo>();
-
     const SIZE: usize = VmRom::MAX_CODESIZE + VmRom::JUMPDESTS_SIZE + VmRom::BB_INFOS_SIZE;
-
     const BB_INFOS_OFFSET: usize = VmRom::MAX_CODESIZE + VmRom::JUMPDESTS_SIZE;
 
     pub fn new() -> VmRom {

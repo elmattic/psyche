@@ -642,11 +642,6 @@ const fn _MM_SHUFFLE(z: i32, y: i32, x: i32, w: i32) -> i32 {
     (z << 6) | (y << 4) | (x << 2) | w
 }
 
-#[cfg(target_feature = "avx2")]
-unsafe fn _mm256_cmpge_epi32(a: __m256i, b: __m256i) -> __m256i {
-    _mm256_or_si256(_mm256_cmpgt_epi32(a, b), _mm256_cmpeq_epi32(a, b))
-}
-
 #[cfg(target_feature = "ssse3")]
 unsafe fn bshl_ssse3(value: (__m128i, __m128i), count: __m128i) -> (__m128i, __m128i) {
     let zero = _mm_setzero_si128();
@@ -709,8 +704,8 @@ pub unsafe fn shl_u256(count: U256, value: U256) -> U256 {
         let pmask = _mm256_sub_epi32(lane32_id, bco32);
         let temp = _mm256_permutevar8x32_epi32(value, pmask);
         // word shift mask
-        let mask = _mm256_cmpge_epi32(lane32_id, bco32);
-        let wordsl = _mm256_and_si256(mask, temp);
+        let mask = _mm256_cmpgt_epi32(bco32, lane32_id);
+        let wordsl = _mm256_andnot_si256(mask, temp);
         // bit shift
         let slcount = _mm_sub_epi32(count128, _mm_slli_epi32(co32, 5));
         let srcount = _mm_sub_epi32(sixty_four, slcount);
