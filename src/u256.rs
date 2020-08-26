@@ -725,18 +725,18 @@ pub unsafe fn shl_u256(count: U256, value: U256) -> U256 {
         let one = _mm_set_epi64x(0, 1);
         let sixty_four = _mm_set_epi64x(0, 64);
         let max_u8 = _mm_sub_epi8(zero, one);
-        // word shift
+        // byte shift
         let count = std::mem::transmute::<U256, (__m128i, __m128i)>(count);
         let value = std::mem::transmute::<U256, (__m128i, __m128i)>(value);
         let co8 = _mm_srli_epi32(count.0, 3);
-        let (wordsllo, wordslhi) = bshl_ssse3(value, co8);
+        let (bytesllo, byteslhi) = bshl_ssse3(value, co8);
         // bit shift
         let slcount = _mm_sub_epi32(count.0, _mm_slli_epi32(co8, 3));
         let srcount = _mm_sub_epi32(sixty_four, slcount);
-        let sltemplo = _mm_sll_epi64(wordsllo, slcount);
-        let sltemphi = _mm_sll_epi64(wordslhi, slcount);
-        let srtemplo = _mm_srl_epi64(wordsllo, srcount);
-        let srtemphi = _mm_srl_epi64(wordslhi, srcount);
+        let sltemplo = _mm_sll_epi64(bytesllo, slcount);
+        let sltemphi = _mm_sll_epi64(byteslhi, slcount);
+        let srtemplo = _mm_srl_epi64(bytesllo, srcount);
+        let srtemphi = _mm_srl_epi64(byteslhi, srcount);
         let carrylo = _mm_bslli_si128(srtemplo, 8);
         let carryhi = _mm_unpacklo_epi64(_mm_bsrli_si128(srtemplo, 8), srtemphi);
         let bitsllo = _mm_or_si128(sltemplo, carrylo);
@@ -775,6 +775,107 @@ pub unsafe fn shl_u256(count: U256, value: U256) -> U256 {
         sltemp1 | srtemp0,
         sltemp2 | srtemp1,
         sltemp3 | srtemp2
+    ]);
+    let hi248 = U256([count.0[0] & !0xff, count.0[1], count.0[2], count.0[3]]);
+    let hiisz = U256::broadcast_u64(bitmask_bool(is_zero_u256(hi248)));
+    let result = and_u256(bitsl, hiisz);
+    result
+}
+
+#[allow(unreachable_code)]
+pub unsafe fn shr_u256(count: U256, value: U256, signed: bool) -> U256 {
+    if signed {
+        return unimplemented!();
+    }
+    #[cfg(target_feature = "avx2")]
+    {
+        let lane32_id = _mm256_set_epi32(7, 6, 5, 4, 3, 2, 1, 0);
+        let lane32_eight = _mm256_broadcastd_epi32(_mm_set_epi64x(0, 8));
+        let sixty_four = _mm_set_epi64x(0, 64);
+        let one = _mm256_set_epi64x(0, 0, 0, 1);
+        let max_u64 = _mm256_set_epi64x(-1, 0, 0, 0);
+        let max_u8 = _mm256_sub_epi8(_mm256_setzero_si256(), one);
+        // word shift
+        let count = std::mem::transmute::<U256, __m256i>(count);
+        let value = std::mem::transmute::<U256, __m256i>(value);
+        let count128 = _mm256_castsi256_si128(count);
+        let co32 = _mm_srli_epi32(count128, 5);
+        let bco32 = _mm256_broadcastd_epi32(co32);
+        let pmask = _mm256_add_epi32(lane32_id, bco32);
+        let temp = _mm256_permutevar8x32_epi32(value, pmask);
+        // word shift mask
+        let bico32 = _mm256_sub_epi32(lane32_eight, bco32);
+        let mask = _mm256_cmpgt_epi32(bico32, lane32_id);
+        let wordsl = _mm256_and_si256(mask, temp);
+        // bit shift
+        let srcount = _mm_sub_epi32(count128, _mm_slli_epi32(co32, 5));
+        let slcount = _mm_sub_epi32(sixty_four, srcount);
+        let srtemp = _mm256_srl_epi64(wordsl, srcount);
+        let sltemp = _mm256_sll_epi64(wordsl, slcount);
+        let carry = _mm256_permute4x64_epi64(sltemp, _MM_SHUFFLE(0, 3, 2, 1));
+        let bitsl = _mm256_or_si256(srtemp, _mm256_andnot_si256(max_u64, carry));
+        //
+        let hi248 = _mm256_andnot_si256(max_u8, count);
+        let hiisz = broadcast_avx2(is_zero_u256(hi248.as_u256()));
+        let result = _mm256_and_si256(bitsl, hiisz);
+        return std::mem::transmute::<__m256i, U256>(result);
+    }
+    #[cfg(target_feature = "ssse3")]
+    {
+        let zero = _mm_setzero_si128();
+        let one = _mm_set_epi64x(0, 1);
+        let sixty_four = _mm_set_epi64x(0, 64);
+        let max_u8 = _mm_sub_epi8(zero, one);
+        // byte shift
+        let count = std::mem::transmute::<U256, (__m128i, __m128i)>(count);
+        let value = std::mem::transmute::<U256, (__m128i, __m128i)>(value);
+        let co8 = _mm_srli_epi32(count.0, 3);
+        let (bytesrlo, bytesrhi) = bshr_ssse3(value, co8);
+        // bit shift
+        let srcount = _mm_sub_epi32(count.0, _mm_slli_epi32(co8, 3));
+        let slcount = _mm_sub_epi32(sixty_four, srcount);
+        let srtemplo = _mm_srl_epi64(bytesrlo, srcount);
+        let srtemphi = _mm_srl_epi64(bytesrhi, srcount);
+        let sltemplo = _mm_sll_epi64(bytesrlo, slcount);
+        let sltemphi = _mm_sll_epi64(bytesrhi, slcount);
+        let carrylo = _mm_unpacklo_epi64(_mm_bsrli_si128(sltemplo, 8), sltemphi);
+        let carryhi = _mm_bsrli_si128(sltemphi, 8);
+        let bitsllo = _mm_or_si128(srtemplo, carrylo);
+        let bitslhi = _mm_or_si128(srtemphi, carryhi);
+        //
+        let hi248 = (_mm_andnot_si128(max_u8, count.0), count.1);
+        let hi248 = std::mem::transmute::<(__m128i, __m128i), U256>(hi248);
+        let hiisz = broadcast_sse2(is_zero_u256(hi248));
+        let result = (_mm_and_si128(hiisz, bitsllo), _mm_and_si128(hiisz, bitslhi));
+        return std::mem::transmute::<(__m128i, __m128i), U256>(result);
+    }
+    // generic target
+    let count_ = count.low_u64() & 0xff;
+    let word_count = (count_ / 64) as usize;
+    let bit_count = count_ % 64;
+    let padded: [u64; 8] = [value.0[0], value.0[1], value.0[2], value.0[3], 0, 0, 0, 0];
+    let wordsr: [u64; 4] = [
+        padded[0+word_count],
+        padded[1+word_count],
+        padded[2+word_count],
+        padded[3+word_count],
+    ];
+    let srcount = bit_count;
+    let slcount = 64-srcount;
+    let sl0count = slcount.min(63);
+    let sl1count = slcount-sl0count;
+    let srtemp3 = wordsr[3] >> srcount;
+    let srtemp2 = wordsr[2] >> srcount;
+    let srtemp1 = wordsr[1] >> srcount;
+    let srtemp0 = wordsr[0] >> srcount;
+    let sltemp3 = (wordsr[3] << sl0count) << sl1count;
+    let sltemp2 = (wordsr[2] << sl0count) << sl1count;
+    let sltemp1 = (wordsr[1] << sl0count) << sl1count;
+    let bitsl = U256([
+        srtemp0 | sltemp1,
+        srtemp1 | sltemp2,
+        srtemp2 | sltemp3,
+        srtemp3
     ]);
     let hi248 = U256([count.0[0] & !0xff, count.0[1], count.0[2], count.0[3]]);
     let hiisz = U256::broadcast_u64(bitmask_bool(is_zero_u256(hi248)));

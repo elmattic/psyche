@@ -484,7 +484,24 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             }
-            Opcode::SHR | Opcode::SAR => unimplemented!(),
+            Opcode::SHR => {
+                comment!("opSHR");
+                let a = stack.pop();
+                let b = stack.pop();
+                let result = shr_u256(a, b, false);
+                stack.push(result);
+                //
+                pc += 1;
+            }
+            Opcode::SAR => {
+                comment!("opSAR");
+                let a = stack.pop();
+                let b = stack.pop();
+                let result = shr_u256(a, b, true);
+                stack.push(result);
+                //
+                pc += 1;
+            }
             Opcode::SHA3 | Opcode::ADDRESS | Opcode::BALANCE | Opcode::ORIGIN | Opcode::CALLER | Opcode::CALLVALUE | Opcode::CALLDATALOAD | Opcode::CALLDATASIZE | Opcode::CALLDATACOPY => unimplemented!(),
             Opcode::CODESIZE => {
                 comment!("opCODESIZE");
