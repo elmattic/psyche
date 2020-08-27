@@ -749,17 +749,16 @@ pub unsafe fn shl_u256(count: U256, value: U256) -> U256 {
         return std::mem::transmute::<(__m128i, __m128i), U256>(result);
     }
     // generic target
-    let count_ = count.low_u64() & 0xff;
-    let word_count = (count_ / 64) as usize;
-    let bit_count = count_ % 64;
+    let count64 = count.low_u64() & 0xff;
+    let offset = (count64 / 64) as usize;
     let padded: [u64; 8] = [0, 0, 0, 0, value.0[0], value.0[1], value.0[2], value.0[3]];
     let wordsl: [u64; 4] = [
-        padded[4+0-word_count],
-        padded[4+1-word_count],
-        padded[4+2-word_count],
-        padded[4+3-word_count],
+        padded[4+0-offset],
+        padded[4+1-offset],
+        padded[4+2-offset],
+        padded[4+3-offset],
     ];
-    let slcount = bit_count;
+    let slcount = count64 % 64;
     let srcount = 64-slcount;
     let sr0count = srcount.min(63);
     let sr1count = srcount-sr0count;
@@ -783,12 +782,12 @@ pub unsafe fn shl_u256(count: U256, value: U256) -> U256 {
 }
 
 #[allow(unreachable_code)]
-pub unsafe fn shr_u256(count: U256, value: U256, signed: bool) -> U256 {
-    if signed {
-        return unimplemented!();
-    }
+pub unsafe fn shr_u256(count: U256, value: U256, arithmetic: bool) -> U256 {
     #[cfg(target_feature = "avx2")]
     {
+        if arithmetic {
+            return unimplemented!();
+        }
         let lane32_id = _mm256_set_epi32(7, 6, 5, 4, 3, 2, 1, 0);
         let lane32_eight = _mm256_broadcastd_epi32(_mm_set_epi64x(0, 8));
         let sixty_four = _mm_set_epi64x(0, 64);
@@ -822,6 +821,9 @@ pub unsafe fn shr_u256(count: U256, value: U256, signed: bool) -> U256 {
     }
     #[cfg(target_feature = "ssse3")]
     {
+        if arithmetic {
+            return unimplemented!();
+        }
         let zero = _mm_setzero_si128();
         let one = _mm_set_epi64x(0, 1);
         let sixty_four = _mm_set_epi64x(0, 64);
@@ -850,17 +852,21 @@ pub unsafe fn shr_u256(count: U256, value: U256, signed: bool) -> U256 {
         return std::mem::transmute::<(__m128i, __m128i), U256>(result);
     }
     // generic target
-    let count_ = count.low_u64() & 0xff;
-    let word_count = (count_ / 64) as usize;
-    let bit_count = count_ % 64;
-    let padded: [u64; 8] = [value.0[0], value.0[1], value.0[2], value.0[3], 0, 0, 0, 0];
+    let count64 = count.low_u64() & 0xff;
+    let offset = (count64 / 64) as usize;
+    let msb = if arithmetic {
+        (-((value.0[3] >> 63) as i64)) as u64
+    } else {
+        0
+    };
+    let padded: [u64; 8] = [value.0[0], value.0[1], value.0[2], value.0[3], msb, msb, msb, msb];
     let wordsr: [u64; 4] = [
-        padded[0+word_count],
-        padded[1+word_count],
-        padded[2+word_count],
-        padded[3+word_count],
+        padded[0+offset],
+        padded[1+offset],
+        padded[2+offset],
+        padded[3+offset],
     ];
-    let srcount = bit_count;
+    let srcount = count64 % 64;
     let slcount = 64-srcount;
     let sl0count = slcount.min(63);
     let sl1count = slcount-sl0count;
@@ -868,19 +874,29 @@ pub unsafe fn shr_u256(count: U256, value: U256, signed: bool) -> U256 {
     let srtemp2 = wordsr[2] >> srcount;
     let srtemp1 = wordsr[1] >> srcount;
     let srtemp0 = wordsr[0] >> srcount;
+    let sltemp4 = (msb << sl0count) << sl1count;
     let sltemp3 = (wordsr[3] << sl0count) << sl1count;
     let sltemp2 = (wordsr[2] << sl0count) << sl1count;
     let sltemp1 = (wordsr[1] << sl0count) << sl1count;
-    let bitsl = U256([
+    let bitsr = U256([
         srtemp0 | sltemp1,
         srtemp1 | sltemp2,
         srtemp2 | sltemp3,
-        srtemp3
+        srtemp3 | sltemp4
     ]);
     let hi248 = U256([count.0[0] & !0xff, count.0[1], count.0[2], count.0[3]]);
     let hiisz = U256::broadcast_u64(bitmask_bool(is_zero_u256(hi248)));
-    let result = and_u256(bitsl, hiisz);
-    result
+    if arithmetic {
+        let result0 = blend_u64(msb, bitsr.0[0], hiisz.0[0]);
+        let result1 = blend_u64(msb, bitsr.0[1], hiisz.0[1]);
+        let result2 = blend_u64(msb, bitsr.0[2], hiisz.0[2]);
+        let result3 = blend_u64(msb, bitsr.0[3], hiisz.0[3]);
+        U256([result0, result1, result2, result3])
+    }
+    else {
+        let result = and_u256(bitsr, hiisz);
+        result
+    }
 }
 
 pub fn overflowing_add_u256(a: U256, b: U256) -> (U256, bool) {
