@@ -781,13 +781,11 @@ pub unsafe fn shl_u256(count: U256, value: U256) -> U256 {
     result
 }
 
+#[inline(always)]
 #[allow(unreachable_code)]
 pub unsafe fn shr_u256(count: U256, value: U256, arithmetic: bool) -> U256 {
     #[cfg(target_feature = "avx2")]
     {
-        if arithmetic {
-            return unimplemented!();
-        }
         let lane32_id = _mm256_set_epi32(7, 6, 5, 4, 3, 2, 1, 0);
         let lane32_eight = _mm256_broadcastd_epi32(_mm_set_epi64x(0, 8));
         let sixty_four = _mm_set_epi64x(0, 64);
@@ -805,18 +803,35 @@ pub unsafe fn shr_u256(count: U256, value: U256, arithmetic: bool) -> U256 {
         // word shift mask
         let bico32 = _mm256_sub_epi32(lane32_eight, bco32);
         let mask = _mm256_cmpgt_epi32(bico32, lane32_id);
-        let wordsl = _mm256_and_si256(mask, temp);
+        let (wordsl, msb) = if arithmetic {
+            let srav = _mm256_srai_epi32(value, 31);
+            let msb = _mm256_permutevar8x32_epi32(srav, _mm256_set_epi32(7, 7, 7, 7, 7, 7, 7, 7));
+            (_mm256_blendv_epi8(msb, temp, mask), msb)
+        } else {
+            (_mm256_and_si256(mask, temp), _mm256_setzero_si256())
+        };
         // bit shift
         let srcount = _mm_sub_epi32(count128, _mm_slli_epi32(co32, 5));
         let slcount = _mm_sub_epi32(sixty_four, srcount);
         let srtemp = _mm256_srl_epi64(wordsl, srcount);
         let sltemp = _mm256_sll_epi64(wordsl, slcount);
-        let carry = _mm256_permute4x64_epi64(sltemp, _MM_SHUFFLE(0, 3, 2, 1));
-        let bitsl = _mm256_or_si256(srtemp, _mm256_andnot_si256(max_u64, carry));
+        let carry0 = _mm256_andnot_si256(max_u64, _mm256_permute4x64_epi64(sltemp, _MM_SHUFFLE(0, 3, 2, 1)));
+        let carry = if arithmetic {
+            let slmsb = _mm256_sll_epi64(msb, slcount);
+            _mm256_blendv_epi8(carry0, slmsb, max_u64)
+        } else {
+            carry0
+        };
+        let bitsl = _mm256_or_si256(srtemp, carry);
         //
         let hi248 = _mm256_andnot_si256(max_u8, count);
         let hiisz = broadcast_avx2(is_zero_u256(hi248.as_u256()));
-        let result = _mm256_and_si256(bitsl, hiisz);
+        let result = if arithmetic {
+            _mm256_blendv_epi8(msb, bitsl, hiisz)
+        }
+        else {
+            _mm256_and_si256(bitsl, hiisz)
+        };
         return std::mem::transmute::<__m256i, U256>(result);
     }
     #[cfg(target_feature = "ssse3")]
