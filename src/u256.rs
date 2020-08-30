@@ -663,8 +663,27 @@ unsafe fn bshl_ssse3(value: (__m128i, __m128i), count: __m128i) -> (__m128i, __m
     return (resultlo, resulthi)
 }
 
+unsafe fn bmask_ssse3(bcount: __m128i) -> (__m128i, __m128i) {
+    // TODO: use _mm_cmplt_epi8 instead?
+    let zero = _mm_setzero_si128();
+    let all_ones = _mm_set_epi64x(-1, -1);
+    let lane8_id = _mm_set_epi8(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
+    let floorlo = _mm_add_epi8(lane8_id, _mm_shuffle_epi8(_mm_set_epi64x(0, 255-32), zero));
+    let floorhi = _mm_add_epi8(lane8_id, _mm_shuffle_epi8(_mm_set_epi64x(0, 255-16), zero));
+    let ssumlo = _mm_adds_epu8(bcount, floorlo);
+    let ssumhi = _mm_adds_epu8(bcount, floorhi);
+    (_mm_cmpeq_epi8(ssumlo, all_ones), _mm_cmpeq_epi8(ssumhi, all_ones))
+}
+
+#[inline(always)]
+#[allow(unreachable_code)]
+unsafe fn mm_andor_si128(a: __m128i, b: __m128i, c: __m128i) -> __m128i {
+    return _mm_or_si128(_mm_and_si128(a, b), c);
+}
+
+#[inline(always)]
 #[cfg(target_feature = "ssse3")]
-unsafe fn bshr_ssse3(value: (__m128i, __m128i), count: __m128i) -> (__m128i, __m128i) {
+unsafe fn bshrmsb_ssse3(value: (__m128i, __m128i), count: __m128i, arithmetic: bool) -> ((__m128i, __m128i), __m128i) {
     let zero = _mm_setzero_si128();
     let sixteen = _mm_set_epi64x(0, 16);
     let lane8_id = _mm_set_epi8(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
@@ -683,7 +702,24 @@ unsafe fn bshr_ssse3(value: (__m128i, __m128i), count: __m128i) -> (__m128i, __m
     let carry = _mm_shuffle_epi8(value.1, csmask);
     let resulthi = temphi;
     let resultlo = _mm_or_si128(templo, _mm_andnot_si128(mask, carry));
-    return (resultlo, resulthi)
+    if arithmetic {
+        let fifteen = _mm_set_epi64x(0, 15);
+        let srav = _mm_srai_epi32(value.1, 31);
+        let msb = _mm_shuffle_epi8(srav, _mm_shuffle_epi8(fifteen, zero));
+        let (masklo, maskhi) = bmask_ssse3(bcount);
+        let resultlo = mm_andor_si128(msb, masklo, resultlo);
+        let resulthi = mm_andor_si128(msb, maskhi, resulthi);
+        return ((resultlo, resulthi), msb);
+    } else {
+        return ((resultlo, resulthi), zero);
+    };
+}
+
+#[inline(always)]
+#[cfg(target_feature = "ssse3")]
+unsafe fn bshr_ssse3(value: (__m128i, __m128i), count: __m128i) -> (__m128i, __m128i) {
+    let (result, _) = bshrmsb_ssse3(value, count, false);
+    result
 }
 
 #[allow(unreachable_code)]
@@ -818,7 +854,7 @@ pub unsafe fn shr_u256(count: U256, value: U256, arithmetic: bool) -> U256 {
         let carry0 = _mm256_andnot_si256(max_u64, _mm256_permute4x64_epi64(sltemp, _MM_SHUFFLE(0, 3, 2, 1)));
         let carry = if arithmetic {
             let slmsb = _mm256_sll_epi64(msb, slcount);
-            _mm256_blendv_epi8(carry0, slmsb, max_u64)
+            _mm256_blendv_epi8(carry0, slmsb, max_u64) // TODO: check mask
         } else {
             carry0
         };
@@ -836,9 +872,6 @@ pub unsafe fn shr_u256(count: U256, value: U256, arithmetic: bool) -> U256 {
     }
     #[cfg(target_feature = "ssse3")]
     {
-        if arithmetic {
-            return unimplemented!();
-        }
         let zero = _mm_setzero_si128();
         let one = _mm_set_epi64x(0, 1);
         let sixty_four = _mm_set_epi64x(0, 64);
@@ -847,7 +880,7 @@ pub unsafe fn shr_u256(count: U256, value: U256, arithmetic: bool) -> U256 {
         let count = std::mem::transmute::<U256, (__m128i, __m128i)>(count);
         let value = std::mem::transmute::<U256, (__m128i, __m128i)>(value);
         let co8 = _mm_srli_epi32(count.0, 3);
-        let (bytesrlo, bytesrhi) = bshr_ssse3(value, co8);
+        let ((bytesrlo, bytesrhi), msb) = bshrmsb_ssse3(value, co8, arithmetic);
         // bit shift
         let srcount = _mm_sub_epi32(count.0, _mm_slli_epi32(co8, 3));
         let slcount = _mm_sub_epi32(sixty_four, srcount);
@@ -856,14 +889,24 @@ pub unsafe fn shr_u256(count: U256, value: U256, arithmetic: bool) -> U256 {
         let sltemplo = _mm_sll_epi64(bytesrlo, slcount);
         let sltemphi = _mm_sll_epi64(bytesrhi, slcount);
         let carrylo = _mm_unpacklo_epi64(_mm_bsrli_si128(sltemplo, 8), sltemphi);
-        let carryhi = _mm_bsrli_si128(sltemphi, 8);
+        let carryhi = if arithmetic {
+            let slmsb = _mm_sll_epi64(msb, slcount);
+            _mm_unpackhi_epi64(sltemphi, slmsb)
+        } else {
+            _mm_bsrli_si128(sltemphi, 8)
+        };
         let bitsllo = _mm_or_si128(srtemplo, carrylo);
         let bitslhi = _mm_or_si128(srtemphi, carryhi);
         //
         let hi248 = (_mm_andnot_si128(max_u8, count.0), count.1);
         let hi248 = std::mem::transmute::<(__m128i, __m128i), U256>(hi248);
         let hiisz = broadcast_sse2(is_zero_u256(hi248));
-        let result = (_mm_and_si128(hiisz, bitsllo), _mm_and_si128(hiisz, bitslhi));
+        let result = if arithmetic {
+            (mm_blendv_epi8(msb, bitsllo, hiisz), mm_blendv_epi8(msb, bitslhi, hiisz))
+        }
+        else {
+            (_mm_and_si128(hiisz, bitsllo), _mm_and_si128(hiisz, bitslhi))
+        };
         return std::mem::transmute::<(__m128i, __m128i), U256>(result);
     }
     // generic target
