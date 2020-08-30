@@ -663,16 +663,14 @@ unsafe fn bshl_ssse3(value: (__m128i, __m128i), count: __m128i) -> (__m128i, __m
     return (resultlo, resulthi)
 }
 
+#[cfg(target_feature = "ssse3")]
 unsafe fn bmask_ssse3(bcount: __m128i) -> (__m128i, __m128i) {
-    // TODO: use _mm_cmplt_epi8 instead?
     let zero = _mm_setzero_si128();
-    let all_ones = _mm_set_epi64x(-1, -1);
-    let lane8_id = _mm_set_epi8(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
-    let floorlo = _mm_add_epi8(lane8_id, _mm_shuffle_epi8(_mm_set_epi64x(0, 255-32), zero));
-    let floorhi = _mm_add_epi8(lane8_id, _mm_shuffle_epi8(_mm_set_epi64x(0, 255-16), zero));
-    let ssumlo = _mm_adds_epu8(bcount, floorlo);
-    let ssumhi = _mm_adds_epu8(bcount, floorhi);
-    (_mm_cmpeq_epi8(ssumlo, all_ones), _mm_cmpeq_epi8(ssumhi, all_ones))
+    let lane8_id = _mm_set_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+    let lane8_id_16 = _mm_add_epi8(lane8_id, _mm_shuffle_epi8(_mm_set_epi64x(0, 16), zero));
+    let masklo = _mm_cmplt_epi8(lane8_id_16, bcount);
+    let maskhi = _mm_cmplt_epi8(lane8_id, bcount);
+    (masklo, maskhi)
 }
 
 #[inline(always)]
