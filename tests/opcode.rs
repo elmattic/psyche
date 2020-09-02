@@ -197,7 +197,7 @@ mod tests {
         );
     }
 
-    /*#[test]
+    #[test]
     fn opcode_div_0() {
         vm_assert_eq("
             PUSH1 0x00
@@ -327,7 +327,7 @@ mod tests {
         );
     }
 
-    #[test]
+    /*#[test]
     fn opcode_sdiv_0() {
         vm_assert_eq("
             PUSH1 0x00

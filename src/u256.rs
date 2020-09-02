@@ -16,6 +16,7 @@
 
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::*;
+use std::mem::MaybeUninit;
 
 #[repr(align(32))]
 #[derive(Copy, Clone)]
@@ -1108,6 +1109,171 @@ pub fn sgt_u256(a: U256, b: U256) -> bool {
     let ahis = ahi as i128;
     let bhis = bhi as i128;
     (ahis > bhis) | ((ahi == bhi) & (alo > blo))
+}
+
+#[allow(unreachable_code)]
+unsafe fn move_mask(value: U256) -> u32 {
+    #[cfg(target_feature = "avx2")]
+    {
+        let value = std::mem::transmute::<U256, __m256i>(value);
+        let temp = _mm256_cmpeq_epi32(value, _mm256_setzero_si256());
+        let bits = _mm256_movemask_epi8(temp);
+        return bits as u32;
+    }
+    #[cfg(target_feature = "ssse3")]
+    {
+        let value = std::mem::transmute::<U256, (__m128i, __m128i)>(value);
+        let templo = _mm_cmpeq_epi32(value.0, _mm_setzero_si128());
+        let temphi = _mm_cmpeq_epi32(value.1, _mm_setzero_si128());
+        let bits = _mm_movemask_epi8(templo) | (_mm_movemask_epi8(temphi) << 16);
+        return bits as u32;
+    }
+    // generic target
+    ((((value.0[0]      ) as u32) == 0) as u32) <<  3 |
+    ((((value.0[0] >> 32) as u32) == 0) as u32) <<  7 |
+    ((((value.0[1]      ) as u32) == 0) as u32) << 11 |
+    ((((value.0[1] >> 32) as u32) == 0) as u32) << 15 |
+    ((((value.0[2]      ) as u32) == 0) as u32) << 19 |
+    ((((value.0[2] >> 32) as u32) == 0) as u32) << 23 |
+    ((((value.0[3]      ) as u32) == 0) as u32) << 27 |
+    ((((value.0[3] >> 32) as u32) == 0) as u32) << 31
+}
+
+pub fn count_u32s(value: U256) -> isize {
+    let bits = unsafe { move_mask(value) };
+    let inv: u64 = !((bits as u64) << 32);
+    let clz = inv.leading_zeros();
+    let count = 8 - clz / 4;
+    count as isize
+}
+
+// Knuth's Algorithm D from Hacker's Delight
+pub unsafe fn divmnu(
+    u: *const u32,
+    v: *const u32,
+    m: isize,
+    n: isize,
+    q: *mut u32,
+    r: *mut u32)
+{
+    debug_assert!(m <= 16);
+    debug_assert!(n <= 8);
+    let b = 1 << 32;
+    if m < n {
+        for i in 0..8 {
+            *r.offset(i) = *u.offset(i);
+        }
+        return;
+    }
+    if n <= 0 || (*v.offset(n-1) == 0) {
+        return;
+    }
+    if n == 1 {
+        let mut k = 0;
+        let mut j = m - 1;
+        while j >= 0 {
+            let temp = *v as u64;
+            *q.offset(j) = ((k * b + *u.offset(j) as u64) / temp) as u32;
+            k = (k * b + *u.offset(j) as u64) - (*q.offset(j) as u64 * temp);
+            j -= 1;
+        }
+        *r = k as u32;
+        return;
+    }
+    //
+    debug_assert!(*v.offset(n-1) != 0);
+    let s = (*v.offset(n-1)).leading_zeros();
+    let mut undata: [u32; 16 + 1] = MaybeUninit::uninit().assume_init();
+    let un = &mut undata[0] as *mut u32;
+    *un.offset(m) = (*u.offset(m-1) as u64 >> (32-s)) as u32;
+    let mut i = m - 1;
+    while i > 0 {
+        *un.offset(i) = ((*u.offset(i) << s) as u64 | (*u.offset(i-1) as u64 >> (32-s))) as u32;
+        i -= 1;
+    }
+    *un = *u << s;
+    let mut vndata: [u32; 8] = MaybeUninit::uninit().assume_init();
+    let vn = &mut vndata[0] as *mut u32;
+    let mut i = n - 1;
+    while i > 0 {
+        *vn.offset(i) = ((*v.offset(i) << s) as u64 | (*v.offset(i-1) as u64 >> (32-s))) as u32;
+        i -= 1;
+    }
+    *vn = *v << s;
+    //
+    let mut qhat: u64 = MaybeUninit::uninit().assume_init();
+    let mut rhat: u64 = MaybeUninit::uninit().assume_init();
+    let mut j = m - n;
+    while j >= 0 {
+        let temp0 = *un.offset(j+n) as u64 * b + *un.offset(j+n-1) as u64;
+        let temp1 = *vn.offset(n-1) as u64;
+        qhat = temp0 / temp1;
+        rhat = temp0 - qhat * temp1;
+        loop {
+            if (qhat >= b) | ((qhat * *vn.offset(n-2) as u64) > (b * rhat + un.offset(j+n-2) as u64)) {
+                qhat -= 1;
+                rhat += *vn.offset(n-1) as u64;
+                if rhat < b {
+                    continue;
+                }
+            }
+            break;
+        }
+        let mut k = 0;
+        let mut t: i64 = MaybeUninit::uninit().assume_init();
+        for i in 0..n {
+            let p = qhat * *vn.offset(i) as u64;
+            t = *un.offset(i+j) as i64 - k - (p as i64 & (u32::max_value() as i64));
+            *un.offset(i+j) = t as u32;
+            k = (p as i64 >> 32) - (t >> 32);
+        }
+        t = *un.offset(j+n) as i64 - k;
+        *un.offset(j+n) = t as u32;
+        //
+        *q.offset(j) = qhat as u32;
+        if t < 0 {
+            *q.offset(j) = *q.offset(j) - 1;
+            k = 0;
+            for i in 0..n {
+                t = *un.offset(i+j) as i64 + *vn.offset(i) as i64 + k;
+                *un.offset(i+j) = t as u32;
+                k = t >> 32;
+            }
+            *un.offset(j+n) += k as u32;
+        }
+        //
+        for i in 0..n-1 {
+            *r.offset(i) = ((*un.offset(i) >> s) as u64 | ((*un.offset(i+1) as u64) << (32-s))) as u32;
+        }
+        *r.offset(n-1) = *un.offset(n-1) >> s;
+        j -= 1;
+    }
+}
+
+pub unsafe fn div_u256(a: U256, b: U256) -> U256 {
+    let u = std::mem::transmute::<_, *const u32>(&a.0[0]);
+    let v = std::mem::transmute::<_, *const u32>(&b.0[0]);
+    let m = count_u32s(a);
+    let n = count_u32s(b);
+    let mut qv = U256::default();
+    let mut rv = U256::default();
+    let q = std::mem::transmute::<_, *mut u32>(&mut qv.0[0]);
+    let r = std::mem::transmute::<_, *mut u32>(&mut rv.0[0]);
+    divmnu(u, v, m, n, q, r);
+    qv
+}
+
+pub unsafe fn mod_u256(a: U256, b: U256) -> U256 {
+    let u = std::mem::transmute::<_, *const u32>(&a.0[0]);
+    let v = std::mem::transmute::<_, *const u32>(&b.0[0]);
+    let m = count_u32s(a);
+    let n = count_u32s(b);
+    let mut qv = U256::default();
+    let mut rv = U256::default();
+    let q = std::mem::transmute::<_, *mut u32>(&mut qv.0[0]);
+    let r = std::mem::transmute::<_, *mut u32>(&mut rv.0[0]);
+    divmnu(u, v, m, n, q, r);
+    rv
 }
 
 // // this is only possible with rust nightly (#15701)
