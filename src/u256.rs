@@ -1129,14 +1129,14 @@ unsafe fn move_mask(value: U256) -> u32 {
         return bits as u32;
     }
     // generic target
-    ((((value.0[0]      ) as u32) == 0) as u32) <<  3 |
-    ((((value.0[0] >> 32) as u32) == 0) as u32) <<  7 |
-    ((((value.0[1]      ) as u32) == 0) as u32) << 11 |
-    ((((value.0[1] >> 32) as u32) == 0) as u32) << 15 |
-    ((((value.0[2]      ) as u32) == 0) as u32) << 19 |
-    ((((value.0[2] >> 32) as u32) == 0) as u32) << 23 |
-    ((((value.0[3]      ) as u32) == 0) as u32) << 27 |
-    ((((value.0[3] >> 32) as u32) == 0) as u32) << 31
+    (((((value.0[0]      ) as u32) == 0) as u32) * (0xf      )) |
+    (((((value.0[0] >> 32) as u32) == 0) as u32) * (0xf <<  4)) |
+    (((((value.0[1]      ) as u32) == 0) as u32) * (0xf <<  8)) |
+    (((((value.0[1] >> 32) as u32) == 0) as u32) * (0xf << 12)) |
+    (((((value.0[2]      ) as u32) == 0) as u32) * (0xf << 16)) |
+    (((((value.0[2] >> 32) as u32) == 0) as u32) * (0xf << 20)) |
+    (((((value.0[3]      ) as u32) == 0) as u32) * (0xf << 24)) |
+    (((((value.0[3] >> 32) as u32) == 0) as u32) * (0xf << 28))
 }
 
 pub fn count_u32s(value: U256) -> isize {
