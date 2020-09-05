@@ -377,7 +377,25 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             }
-            Opcode::SDIV | Opcode::SMOD | Opcode::ADDMOD | Opcode::MULMOD | Opcode::EXP => unimplemented!(),
+            Opcode::SDIV => {
+                comment!("opSDIV");
+                let a = stack.pop_u256();
+                let b = stack.pop_u256();
+                let r = sdiv_u256(a, b);
+                stack.push(r);
+                //
+                pc += 1;
+            }
+            Opcode::SMOD => {
+                comment!("opSMOD");
+                let a = stack.pop_u256();
+                let b = stack.pop_u256();
+                let r = smod_u256(a, b);
+                stack.push(r);
+                //
+                pc += 1;
+            }
+            Opcode::ADDMOD | Opcode::MULMOD | Opcode::EXP => unimplemented!(),
             Opcode::SIGNEXTEND => {
                 comment!("opSIGNEXTEND");
                 let offset = *(stack.sp as *const u32) % 32;

@@ -1147,6 +1147,134 @@ pub fn count_u32s(value: U256) -> isize {
     count as isize
 }
 
+#[allow(unreachable_code)]
+pub unsafe fn negate_u256(value: U256) -> U256 {
+    #[cfg(target_feature = "avx2")]
+    {
+        const LUT: [U256; 8] = [
+            U256([1, 0, 0, 0]), // 0: 000
+            U256([1, 1, 0, 0]), // 1: 001
+            U256([1, 0, 0, 0]), // 2: 010
+            U256([1, 1, 1, 0]), // 3: 011
+            U256([1, 0, 0, 0]), // 4: 100
+            U256([1, 1, 0, 0]), // 5: 101
+            U256([1, 0, 0, 0]), // 6: 110
+            U256([1, 1, 1, 1])  // 7: 111
+        ];
+        let all_ones = _mm256_set_epi64x(-1, -1, -1, -1);
+        //
+        let value = std::mem::transmute::<U256, __m256i>(value);
+        let notv = _mm256_andnot_si256(value, all_ones);
+        let mask = _mm256_cmpeq_epi64(notv, all_ones);
+        let bits = _mm256_movemask_epi8(mask);
+        let index = _pext_u32(bits as u32, (1 | (1<<8) | (1<<16)));
+        let ptr = std::mem::transmute::<_, *const __m256i>(&LUT[0]);
+        let carry = _mm256_load_si256(ptr.offset(index as isize));
+        let result = _mm256_add_epi64(notv, carry);
+        return std::mem::transmute::<__m256i, U256>(result);
+    }
+    #[cfg(target_feature = "ssse3")]
+    {
+        let all_ones = _mm_set_epi64x(-1, -1);
+        let one = _mm_set_epi64x(0, 1);
+        let max_u64 = _mm_sub_epi64(_mm_setzero_si128(), one);
+        let lane64_one = _mm_shuffle_epi32(one, _MM_SHUFFLE(1, 0, 1, 0)); // _mm_set_epi64x(1, 1);
+        //
+        let value = std::mem::transmute::<U256, (__m128i, __m128i)>(value);
+        let notvlo = _mm_andnot_si128(value.0, all_ones);
+        let notvhi = _mm_andnot_si128(value.1, all_ones);
+        let mask0lo = _mm_cmpeq_epi64(all_ones, notvlo);
+        let mask0hi = _mm_cmpeq_epi64(all_ones, notvhi);
+        let mask1lo = _mm_or_si128(_mm_bslli_si128(mask0lo, 8), max_u64);
+        let mask1hi = _mm_unpackhi_epi64(mask0lo, _mm_bslli_si128(mask0hi, 8));
+        let mask3hi = _mm_or_si128(_mm_bslli_si128(mask0lo, 8), max_u64);
+        let maskhi = _mm_and_si128(_mm_and_si128(mask1hi, mask0lo), mask3hi);
+        let carrylo = _mm_and_si128(mask1lo, lane64_one);
+        let carryhi = _mm_and_si128(maskhi, lane64_one);
+        let resultlo = _mm_add_epi64(notvlo, carrylo);
+        let resulthi = _mm_add_epi64(notvhi, carryhi);
+        return std::mem::transmute::<(__m128i, __m128i), U256>((resultlo, resulthi));
+    }
+    // generic target
+    add_u256(not_u256(value), U256::from_u64(1))
+}
+
+#[allow(unreachable_code)]
+pub unsafe fn is_neg_u256(value: U256) -> U256 {
+    #[cfg(target_feature = "avx2")]
+    {
+        let value = std::mem::transmute::<U256, __m256i>(value);
+        let temp = _mm256_srai_epi32(value, 31);
+        let result = _mm256_permutevar8x32_epi32(temp, _mm256_set_epi32(7, 7, 7, 7, 7, 7, 7, 7));
+        return std::mem::transmute::<__m256i, U256>(result);
+    }
+    #[cfg(target_feature = "ssse3")]
+    {
+        let value = std::mem::transmute::<U256, (__m128i, __m128i)>(value);
+        let temp = _mm_srai_epi32(value.1, 31);
+        let result = _mm_shuffle_epi32(temp, _MM_SHUFFLE(3, 3, 3, 3));
+        return std::mem::transmute::<(__m128i, __m128i), U256>((result, result));
+    }
+    // generic target
+    let temp = ((value.0[3] as i64) >> 63) as u64;
+    return U256::broadcast_u64(temp);
+}
+
+#[allow(unreachable_code)]
+pub unsafe fn opposite_signs_u256(a: U256, b: U256) -> U256 {
+    #[cfg(target_feature = "avx2")]
+    {
+        let a = std::mem::transmute::<U256, __m256i>(a);
+        let b = std::mem::transmute::<U256, __m256i>(b);
+        let temp = _mm256_xor_si256(a, b);
+        return is_neg_u256(std::mem::transmute::<__m256i, U256>(temp));
+    }
+    #[cfg(target_feature = "ssse3")]
+    {
+        let a = std::mem::transmute::<U256, (__m128i, __m128i)>(a);
+        let b = std::mem::transmute::<U256, (__m128i, __m128i)>(b);
+        let temp = _mm_xor_si128(a.1, b.1);
+        return is_neg_u256(std::mem::transmute::<(__m128i, __m128i), U256>((_mm_undefined_si128(), temp)));
+    }
+    // generic target
+    let temp = a.0[3] ^ b.0[3];
+    return is_neg_u256(U256::broadcast_u64(temp));
+}
+
+#[allow(unreachable_code)]
+pub unsafe fn blend_u256(a: U256, b: U256, mask: U256) -> U256 {
+    #[cfg(target_feature = "avx2")]
+    {
+        let a = std::mem::transmute::<U256, __m256i>(a);
+        let b = std::mem::transmute::<U256, __m256i>(b);
+        let mask = std::mem::transmute::<U256, __m256i>(mask);
+        let result = _mm256_blendv_epi8(a, b, mask);
+        return std::mem::transmute::<__m256i, U256>(result);
+    }
+    #[cfg(target_feature = "ssse3")]
+    {
+        let a = std::mem::transmute::<U256, (__m128i, __m128i)>(a);
+        let b = std::mem::transmute::<U256, (__m128i, __m128i)>(b);
+        let mask = std::mem::transmute::<U256, (__m128i, __m128i)>(mask);
+        let resultlo = mm_blendv_epi8(a.0, b.0, mask.0);
+        let resulthi = mm_blendv_epi8(a.1, b.1, mask.1);
+        return std::mem::transmute::<(__m128i, __m128i), U256>((resultlo, resulthi));
+    }
+    // generic target
+    let result0 = blend_u64(a.0[0], b.0[0], mask.0[0]);
+    let result1 = blend_u64(a.0[1], b.0[1], mask.0[1]);
+    let result2 = blend_u64(a.0[2], b.0[2], mask.0[2]);
+    let result3 = blend_u64(a.0[3], b.0[3], mask.0[3]);
+    U256([result0, result1, result2, result3])
+}
+
+#[allow(unreachable_code)]
+pub unsafe fn abs_u256(value: U256) -> U256 {
+    let negv = negate_u256(value);
+    let isneg = is_neg_u256(value);
+    blend_u256(value, negv, isneg)
+}
+
 // Knuth's Algorithm D from Hacker's Delight
 pub unsafe fn divmnu(
     u: *const u32,
@@ -1274,6 +1402,22 @@ pub unsafe fn mod_u256(a: U256, b: U256) -> U256 {
     let r = std::mem::transmute::<_, *mut u32>(&mut rv.0[0]);
     divmnu(u, v, m, n, q, r);
     rv
+}
+
+pub unsafe fn sdiv_u256(a: U256, b: U256) -> U256 {
+    let absa = abs_u256(a);
+    let absb = abs_u256(b);
+    let q = div_u256(absa, absb);
+    let negq = negate_u256(q);
+    blend_u256(q, negq, opposite_signs_u256(a, b))
+}
+
+pub unsafe fn smod_u256(a: U256, b: U256) -> U256 {
+    let absa = abs_u256(a);
+    let absb = abs_u256(b);
+    let r = mod_u256(absa, absb);
+    let negr = negate_u256(r);
+    blend_u256(r, negr, opposite_signs_u256(a, b))
 }
 
 // // this is only possible with rust nightly (#15701)
