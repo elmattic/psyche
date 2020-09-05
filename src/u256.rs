@@ -750,8 +750,8 @@ pub unsafe fn shl_u256(count: U256, value: U256) -> U256 {
         let srcount = _mm_sub_epi32(sixty_four, slcount);
         let sltemp = _mm256_sll_epi64(wordsl, slcount);
         let srtemp = _mm256_srl_epi64(wordsl, srcount);
-        const pmaski: i32 = _MM_SHUFFLE(2, 1, 0, 3);
-        let carry = _mm256_andnot_si256(max_u64, _mm256_permute4x64_epi64(srtemp, pmaski));
+        const PMASKI: i32 = _MM_SHUFFLE(2, 1, 0, 3);
+        let carry = _mm256_andnot_si256(max_u64, _mm256_permute4x64_epi64(srtemp, PMASKI));
         let bitsl = _mm256_or_si256(sltemp, _mm256_andnot_si256(max_u64, carry));
         //
         let hi248 = _mm256_andnot_si256(max_u8, count);
@@ -855,8 +855,8 @@ pub unsafe fn shr_u256(count: U256, value: U256, arithmetic: bool) -> U256 {
         let slcount = _mm_sub_epi32(sixty_four, srcount);
         let srtemp = _mm256_srl_epi64(wordsl, srcount);
         let sltemp = _mm256_sll_epi64(wordsl, slcount);
-        const pmaski: i32 = _MM_SHUFFLE(0, 3, 2, 1);
-        let carry0 = _mm256_andnot_si256(max_u64, _mm256_permute4x64_epi64(sltemp, pmaski));
+        const PMASKI: i32 = _MM_SHUFFLE(0, 3, 2, 1);
+        let carry0 = _mm256_andnot_si256(max_u64, _mm256_permute4x64_epi64(sltemp, PMASKI));
         let carry = if arithmetic {
             let slmsb = _mm256_sll_epi64(msb, slcount);
             _mm256_blendv_epi8(carry0, slmsb, max_u64) // TODO: check mask
