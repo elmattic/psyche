@@ -22,6 +22,10 @@ use std::mem::MaybeUninit;
 #[derive(Copy, Clone)]
 pub struct U256(pub [u64; 4]);
 
+#[repr(align(32))]
+#[derive(Copy, Clone)]
+pub struct U512(pub [u64; 8]);
+
 impl U256 {
     pub fn default() -> U256 {
         U256 { 0: [0, 0, 0, 0] }
@@ -1059,6 +1063,12 @@ pub fn mul_u256(a: U256, b: U256) -> U256 {
     U256([c[0], c[1], c[2], c[3]])
 }
 
+pub fn fullmul_u256(a: U256, b: U256) -> U512 {
+    let mut c: [u64; 8] = unsafe { std::mem::uninitialized() };
+    mul_limbs(4, &a.0, &b.0, &mut c);
+    U512(c)
+}
+
 fn overflowing_sub_u256(a: U256, b: U256) -> (U256, bool) {
     let alo = ((a.0[1] as u128) << 64) | (a.0[0] as u128);
     let blo = ((b.0[1] as u128) << 64) | (b.0[0] as u128);
@@ -1286,7 +1296,7 @@ pub unsafe fn divmnu(
 {
     debug_assert!(m <= 16);
     debug_assert!(n <= 8);
-    let b = 1 << 32;
+    let b: u64 = 1 << 32;
     if m < n {
         for i in 0..8 {
             *r.offset(i) = *u.offset(i);
@@ -1347,15 +1357,18 @@ pub unsafe fn divmnu(
             }
             break;
         }
-        let mut k = 0;
+        let mut k: u64 = 0;
         let mut t: i64 = MaybeUninit::uninit().assume_init();
         for i in 0..n {
             let p = qhat * *vn.offset(i) as u64;
-            t = *un.offset(i+j) as i64 - k - (p as i64 & (u32::max_value() as i64));
+            t = {
+                let temp = (*un.offset(i+j) as u64).wrapping_sub(k);
+                temp.wrapping_sub(p & (u32::max_value() as u64))
+            } as i64;
             *un.offset(i+j) = t as u32;
-            k = (p as i64 >> 32) - (t >> 32);
+            k = (p >> 32).wrapping_sub((t >> 32) as u64);
         }
-        t = *un.offset(j+n) as i64 - k;
+        t = (*un.offset(j+n) as u64).wrapping_sub(k) as i64;
         *un.offset(j+n) = t as u32;
         //
         *q.offset(j) = qhat as u32;
@@ -1363,11 +1376,11 @@ pub unsafe fn divmnu(
             *q.offset(j) = *q.offset(j) - 1;
             k = 0;
             for i in 0..n {
-                t = *un.offset(i+j) as i64 + *vn.offset(i) as i64 + k;
+                t = (*un.offset(i+j) as u64 + *vn.offset(i) as u64 + k) as i64;
                 *un.offset(i+j) = t as u32;
-                k = t >> 32;
+                k = (t >> 32) as u64;
             }
-            *un.offset(j+n) += k as u32;
+            *un.offset(j+n) = (*un.offset(j+n) as u64 + k) as u32;
         }
         //
         for i in 0..n-1 {
@@ -1418,6 +1431,49 @@ pub unsafe fn smod_u256(a: U256, b: U256) -> U256 {
     let r = mod_u256(absa, absb);
     let negr = negate_u256(r);
     blend_u256(r, negr, opposite_signs_u256(a, b))
+}
+
+pub unsafe fn addmod_u256(a: U256, b: U256, c: U256) -> U256 {
+    let (temp, overflow) = overflowing_add_u256(a, b);
+    let s: [u32; 9] = [
+        (temp.0[0] as u32),
+        (temp.0[0] >> 32) as u32,
+        (temp.0[1] as u32),
+        (temp.0[1] >> 32) as u32,
+        (temp.0[2] as u32),
+        (temp.0[2] >> 32) as u32,
+        (temp.0[3] as u32),
+        (temp.0[3] >> 32) as u32,
+        overflow as u32,
+    ];
+    let u = &s[0] as *const u32;
+    let v = std::mem::transmute::<_, *const u32>(&c.0[0]);
+    let am = count_u32s(a);
+    let bm = count_u32s(b);
+    let m = am.max(bm) + overflow as isize;
+    let n = count_u32s(c);
+    let mut qv = U256::default();
+    let mut rv = U256::default();
+    let q = std::mem::transmute::<_, *mut u32>(&mut qv.0[0]);
+    let r = std::mem::transmute::<_, *mut u32>(&mut rv.0[0]);
+    divmnu(u, v, m, n, q, r);
+    rv
+}
+
+pub unsafe fn mulmod_u256(a: U256, b: U256, c: U256) -> U256 {
+    let p = fullmul_u256(a, b);
+    let u = std::mem::transmute::<_, *const u32>(&p.0[0]);
+    let v = std::mem::transmute::<_, *const u32>(&c.0[0]);
+    let am = count_u32s(a);
+    let bm = count_u32s(b);
+    let m = am + bm;
+    let n = count_u32s(c);
+    let mut qv = U256::default();
+    let mut rv = U256::default();
+    let q = std::mem::transmute::<_, *mut u32>(&mut qv.0[0]);
+    let r = std::mem::transmute::<_, *mut u32>(&mut rv.0[0]);
+    divmnu(u, v, m, n, q, r);
+    rv
 }
 
 // // this is only possible with rust nightly (#15701)
