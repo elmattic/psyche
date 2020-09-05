@@ -373,7 +373,7 @@ pub unsafe fn is_zero_u256(value: U256) -> bool {
 
 #[allow(unreachable_code)]
 pub unsafe fn is_ltpow2_u256(value: U256, pow2: usize) -> bool {
-    assert!(pow2.is_power_of_two());
+    debug_assert!(pow2.is_power_of_two());
     #[cfg(target_feature = "avx2")]
     {
         let one = _mm256_set_epi64x(0, 0, 0, 1);
@@ -1041,7 +1041,7 @@ fn mul_diagc(num_limbs: usize, i: usize, a: &[u64], b: u64, r: &mut [u64], rp: &
 }
 
 fn mul_limbs(num_limbs: usize, a: &[u64], b: &[u64], c: &mut [u64]) {
-    assert!(num_limbs <= 4);
+    debug_assert!(num_limbs <= 4);
     let mut r: [u64; 8] = unsafe { std::mem::uninitialized() };
     let mut rp: [u64; 8] = unsafe { std::mem::uninitialized() };
     //

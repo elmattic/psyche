@@ -119,7 +119,7 @@ impl Block {
     }
 
     fn new(label: Option<Symbol>, directives: Vec<Directive>) -> Block {
-        assert!(directives.len() > 0, "at least one directive");
+        debug_assert!(directives.len() > 0, "at least one directive");
         Block { label, directives }
     }
 }
