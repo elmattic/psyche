@@ -33,7 +33,7 @@ pub fn decode_hex(s: &str) -> Result<Vec<u8>, ParseIntError> {
 }
 
 macro_rules! test_feature_bit {
-   ($name:ident, $register: ident, $mask:expr) => (
+   ($name:ident, $register:ident, $mask:expr) => (
         fn $name() -> bool {
             use core::arch::x86_64::__cpuid;
             #[cfg(target_arch = "x86_64")]
@@ -47,12 +47,12 @@ macro_rules! test_feature_bit {
 }
 
 macro_rules! test_extented_feature_bit {
-   ($name:ident, $register: ident, $mask:expr) => (
+   ($name:ident, $eax:literal, $register:ident, $mask:expr) => (
         fn $name() -> bool {
             use core::arch::x86_64::__cpuid_count;
             #[cfg(target_arch = "x86_64")]
             {
-                let result = unsafe { __cpuid_count(7, 0) };
+                let result = unsafe { __cpuid_count($eax, 0) };
                 return (result.$register & $mask) > 0;
             }
             return false;
@@ -60,12 +60,14 @@ macro_rules! test_extented_feature_bit {
     )
 }
 
+test_feature_bit!(may_i_use_Sse2, edx, 1 << 26);
 test_feature_bit!(may_i_use_Ssse3, ecx, 1 << 9);
-test_extented_feature_bit!(may_i_use_Avx2, ebx, 1 << 5);
-test_extented_feature_bit!(may_i_use_Bmi1, ebx, 1 << 3);
-test_extented_feature_bit!(may_i_use_Bmi2, ebx, 1 << 8);
-test_extented_feature_bit!(may_i_use_Adx, ebx, 1 << 19);
-test_extented_feature_bit!(may_i_use_Avx512f, ebx, 1 << 16);
+test_extented_feature_bit!(may_i_use_Avx2, 7, ebx, 1 << 5);
+test_extented_feature_bit!(may_i_use_Bmi1, 7, ebx, 1 << 3);
+test_extented_feature_bit!(may_i_use_Bmi2, 7, ebx, 1 << 8);
+test_extented_feature_bit!(may_i_use_Adx, 7, ebx, 1 << 19);
+test_extented_feature_bit!(may_i_use_Avx512f, 7, ebx, 1 << 16);
+test_extented_feature_bit!(may_i_use_Lzcnt, 0x80000001, ecx, 1 << 5);
 
 #[allow(unreachable_code)]
 pub fn print_config() {
@@ -78,12 +80,14 @@ pub fn print_config() {
         println!("mode: release");
     }
     let mut features = vec![];
+    if may_i_use_Sse2() { features.push("sse2"); }
     if may_i_use_Ssse3() { features.push("ssse3"); }
     if may_i_use_Avx2() { features.push("avx2"); }
     if may_i_use_Bmi1() { features.push("bmi1"); }
     if may_i_use_Bmi2() { features.push("bmi2"); }
     if may_i_use_Adx() { features.push("adx"); }
     if may_i_use_Avx512f() { features.push("avx512f"); }
+    if may_i_use_Lzcnt() { features.push("lzcnt"); }
     if features.len() > 0 {
         println!("flags: {}", features.join(" "));
     }
