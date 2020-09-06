@@ -1278,11 +1278,22 @@ pub unsafe fn blend_u256(a: U256, b: U256, mask: U256) -> U256 {
     U256([result0, result1, result2, result3])
 }
 
-#[allow(unreachable_code)]
 pub unsafe fn abs_u256(value: U256) -> U256 {
     let negv = negate_u256(value);
     let isneg = is_neg_u256(value);
     blend_u256(value, negv, isneg)
+}
+
+fn leading_zeros_u256(value: U256) -> usize {
+    let mask3 = -((value.0[3] == 0) as i64) as u64;
+    let mask2 = -((value.0[2] == 0) as i64) as u64;
+    let mask1 = -((value.0[1] == 0) as i64) as u64;
+    let count =
+        (value.0[3].leading_zeros() as u64) +
+        (value.0[2].leading_zeros() as u64 & mask3) +
+        (value.0[1].leading_zeros() as u64 & mask3 & mask2) +
+        (value.0[0].leading_zeros() as u64 & mask3 & mask2 & mask1);
+    return count as usize;
 }
 
 // Knuth's Algorithm D from Hacker's Delight
@@ -1474,6 +1485,26 @@ pub unsafe fn mulmod_u256(a: U256, b: U256, c: U256) -> U256 {
     let r = std::mem::transmute::<_, *mut u32>(&mut rv.0[0]);
     divmnu(u, v, m, n, q, r);
     rv
+}
+
+pub fn exp_u256(base: U256, exponent: U256) -> U256 {
+    let num_bits = 256-leading_zeros_u256(exponent);
+    let mut result = U256::from_u64(1);
+    let mut acc = base;
+    let mut i = 0;
+    loop {
+        let bit_on = exponent.0[i/64] & (1 << (i%64));
+        if bit_on > 0 {
+            result = mul_u256(result, acc);
+        }
+        i += 1;
+        if i < num_bits {
+            acc = mul_u256(acc, acc);
+            continue;
+        }
+        break;
+    }
+    result
 }
 
 // // this is only possible with rust nightly (#15701)

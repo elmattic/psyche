@@ -662,7 +662,7 @@ mod tests {
         );
     }
 
-    /*#[test]
+    #[test]
     fn opcode_exp_0() {
         vm_assert_eq("
             0
@@ -738,7 +738,7 @@ mod tests {
             "aac77ae32292e8f4000000000000000000000000000000000000000000000001",
             None,
         );
-    }*/
+    }
 
     #[test]
     fn opcode_signextend_0() {
