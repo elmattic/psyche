@@ -101,13 +101,13 @@ fn memory_gas_cost(memory_gas: u64, num_words: u64) -> u128 {
     mul_u64(memory_gas, num_words) + mul_u64(num_words, num_words) / 512
 }
 
-fn memory_extend_gas_cost(memory_gas: u64, num_words: u64, new_num_words: u64) -> u128 {
+fn memory_extend_gas_cost(memory_gas: u64, num_words: u64, new_num_words: u64) -> u64 {
     let t0 = mul_u64(num_words, num_words) / 512;
     let t1 = mul_u64(new_num_words, new_num_words) / 512;
     let dt = t1 - t0;
     let d = mul_u64(memory_gas, new_num_words - num_words);
     let delta = dt + d;
-    delta
+    delta.min(u64::max_value() as u128) as u64
 }
 
 macro_rules! unsupported_gas {
@@ -204,7 +204,7 @@ macro_rules! comment {
 macro_rules! check_exception_at {
     ($addr:expr, $gas:ident, $rom:ident, $stack:ident, $error:ident) => {
         let bb_info = $rom.get_bb_info($addr);
-        let (newgas, oog) = overflowing_sub_word($gas, bb_info.gas);
+        let (newgas, oog) = $gas.overflowing_sub(bb_info.gas);
         $gas = newgas;
         let stack_min_size = bb_info.stack_min_size as usize;
         let stack_rel_max_size = bb_info.stack_rel_max_size as usize;
@@ -232,7 +232,7 @@ macro_rules! metered_extend {
             let len = $memory.len as u64;
             if $new_len > len {
                 let cost = memory_extend_gas_cost($schedule.memory_gas, len, $new_len);
-                let (newgas, oog) = overflowing_sub_word_u128($gas, cost);
+                let (newgas, oog) = $gas.overflowing_sub(cost);
                 $gas = newgas;
                 if !oog {
                     $memory.len = $new_len as usize;
@@ -301,7 +301,7 @@ macro_rules! lldb_hook {
         #[cfg(debug_assertions)]
         {
             let stack_start = $stack.start;
-            let gas = $gas.as_u256().low_u64();
+            let gas = $gas;
             let ssize = $stack.size();
             let msize = $memory.size();
             $hook($pc, gas, ssize, msize);
@@ -315,7 +315,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
     let mut stack: VmStack = VmStack::new(&mut slots);
     let code: *const Opcode = rom.code() as *const Opcode;
     let mut pc: usize = 0;
-    let mut gas: Word = Word::from_slice(&(gas_limit.0));
+    let mut gas = gas_limit.low_u64();
     let mut error: VmError = VmError::None;
     let mut entered = false;
     while !entered {
@@ -662,7 +662,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
             }
             Opcode::GAS => {
                 comment!("opGAS");
-                let result = gas.as_u256();
+                let result = U256::from_u64(gas);
                 stack.push(result);
                 //
                 pc += 1;
