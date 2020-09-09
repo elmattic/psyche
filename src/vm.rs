@@ -268,6 +268,7 @@ macro_rules! extend_memory {
                 let (temp2, overflow2) = temp1.overflowing_add(31);
                 (temp2 / 32, overflow1 | overflow2)
             };
+            let new_len = if $size.low_u64() == 0 { $memory.len as u64 } else { new_len };
             metered_extend!(new_len, overflow, $schedule, $memory, $gas, $error);
         } else {
             $error = VmError::OutOfGas;
