@@ -1,0 +1,49 @@
+; measures performance of the EXP instruction by computing 2^5 20 million times
+
+    end
+    loop
+    1
+    0
+    SUB
+
+    20000000
+loop:
+    DUP1
+    ISZERO
+    DUP5       ; end
+    JUMPI
+    DUP2       ; -1
+    ADD
+
+    ; 1
+    ; 5
+    ; SHL
+    ; 1
+    ; 5
+    ; SHL
+    ; 1
+    ; 5
+    ; SHL
+    5
+    2
+    EXP
+    5
+    2
+    EXP
+    5
+    2
+    EXP
+
+    POP
+    POP
+    POP
+
+    DUP3       ; loop
+    JUMP
+end:
+    GAS
+    0
+    MSTORE
+    PUSH1 0x20
+    PUSH1 0x00
+    RETURN

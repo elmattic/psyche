@@ -1,0 +1,5 @@
+PUSH1 0x20
+PUSH1 0x01
+SHA3
+MSIZE
+retword
