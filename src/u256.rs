@@ -1531,6 +1531,122 @@ pub fn exp_u256(base: U256, exponent: U256) -> U256 {
 //     }
 // }
 
+fn rol_u64(a: u64, b: u64) -> u64 {
+    (a << b) | (a >> (64 - b))
+}
+
+fn andn_u64(a: u64, b: u64) -> u64 {
+    !a & b
+}
+
+// From Markku-Juhani O. Saarinen
+fn keccakf1600(state: &mut [u64; 25]) {
+    const KECCAKF_RNDC: [u64; 24] = [
+        0x0000000000000001, 0x0000000000008082, 0x800000000000808a,
+        0x8000000080008000, 0x000000000000808b, 0x0000000080000001,
+        0x8000000080008081, 0x8000000000008009, 0x000000000000008a,
+        0x0000000000000088, 0x0000000080008009, 0x000000008000000a,
+        0x000000008000808b, 0x800000000000008b, 0x8000000000008089,
+        0x8000000000008003, 0x8000000000008002, 0x8000000000000080,
+        0x000000000000800a, 0x800000008000000a, 0x8000000080008081,
+        0x8000000000008080, 0x0000000080000001, 0x8000000080008008
+    ];
+    const KECCAKF_ROTC: [u64; 24] = [
+        1, 3, 6,
+        10, 15, 21,
+        28, 36, 45,
+        55, 2, 14,
+        27, 41, 56,
+        8, 25, 43,
+        62, 18, 39,
+        61, 20, 44
+    ];
+    const KECCAKF_PILN: [usize; 24] = [
+        10, 7, 11,
+        17, 18, 3,
+        5, 16, 8,
+        21, 24, 4,
+        15, 23, 19,
+        13, 12, 2,
+        20, 14, 22,
+        9, 6, 1
+    ];
+    let mut bc: [u64; 5] = unsafe { MaybeUninit::uninit().assume_init() };
+    for r in 0..24 {
+        // theta
+        for i in 0..5 {
+            bc[i] = state[i] ^ state[i+5] ^ state[i+10] ^ state[i+15] ^ state[i+20];
+        }
+        for i in 0..5 {
+            let t = bc[(i + 4) % 5] ^ rol_u64(bc[(i + 1) % 5], 1);
+            for j in 0..5 {
+                let j = j * 5;
+                state[j+i] ^= t;
+            }
+        }
+        // rho and pi
+        let mut t = state[1];
+        for i in 0..12 {
+            let j = KECCAKF_PILN[i];
+            bc[0] = state[j];
+            state[j as usize] = rol_u64(t, KECCAKF_ROTC[i]);
+            t = bc[0];
+        }
+        for i in 12..24 {
+            let j = KECCAKF_PILN[i];
+            bc[0] = state[j];
+            state[j as usize] = rol_u64(t, KECCAKF_ROTC[i]);
+            t = bc[0];
+        }
+        // chi
+        for j in 0..5 {
+            let j = j * 5;
+            for i in 0..5 {
+                bc[i] = state[j+i];
+            }
+            for i in 0..5 {
+                state[j+i] ^= andn_u64(bc[(i + 1) % 5], bc[(i + 2) % 5]);
+            }
+        }
+        // iota
+        state[0] ^= KECCAKF_RNDC[r];
+    }
+}
+
+pub unsafe fn keccak256(input: *const u8, size: usize) -> U256 {
+    const RATE: usize = 200 - 2 * 32;
+    let mut input = input;
+    let mut size = size;
+    let mut state: [u64; 25] = [0; 25];
+    while size >= RATE {
+        for i in 0..(RATE/8) {
+            state[i] ^= *(input as *const u64).offset(i as isize);
+        }
+        keccakf1600(&mut state);
+        input = input.offset(RATE as isize);
+        size -= RATE;
+    }
+    let mut temp: [u8; 136] = [0; 136];
+    let ptr = temp.as_mut_ptr();
+    for i in 0..size {
+        *ptr.offset(i as isize) = *input.offset(i as isize);
+    }
+    temp[size] = 0x01;
+    temp[RATE-1] |= 0x80;
+    let ptr = temp.as_mut_ptr() as *const u64;
+    for i in 0..(RATE/8) {
+        state[i] ^= *ptr.offset(i as isize);
+    }
+    keccakf1600(&mut state);
+    U256([state[0], state[1], state[2], state[3]])
+}
+
+pub unsafe fn sha3_u256(input: *const u8, size: usize) -> U256 {
+    let hash = keccak256(input, size);
+    let result = bswap_u256(hash);
+    result
+}
+
 #[inline(always)]
 #[allow(unreachable_code)]
 unsafe fn mm_extract_epi64(a: __m128i, imm8: i32) -> i64 {

@@ -567,7 +567,19 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             }
-            Opcode::SHA3 | Opcode::ADDRESS | Opcode::BALANCE | Opcode::ORIGIN | Opcode::CALLER | Opcode::CALLVALUE | Opcode::CALLDATALOAD | Opcode::CALLDATASIZE | Opcode::CALLDATACOPY => unimplemented!(),
+            Opcode::SHA3 => {
+                comment!("opSHA3");
+                let offset = stack.pop_u256();
+                let size = stack.pop_u256();
+                extend_memory!(offset, size, schedule, memory, gas, error);
+                let offset = offset.low_u64() as isize;
+                let size = size.low_u64() as usize;
+                let result = sha3_u256(memory.ptr.offset(offset), size);
+                stack.push(result);
+                //
+                pc += 1;
+            }
+            | Opcode::ADDRESS | Opcode::BALANCE | Opcode::ORIGIN | Opcode::CALLER | Opcode::CALLVALUE | Opcode::CALLDATALOAD | Opcode::CALLDATASIZE | Opcode::CALLDATACOPY => unimplemented!(),
             Opcode::CODESIZE => {
                 comment!("opCODESIZE");
                 stack.push(U256::from_u64(bytecode.len() as u64));

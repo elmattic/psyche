@@ -2153,7 +2153,7 @@ mod tests {
         );
     }
 
-    /*#[test]
+    #[test]
     fn opcode_sha3_0() {
         vm_assert_eq("
             PUSH1 0x00
@@ -2313,7 +2313,7 @@ mod tests {
         );
     }
 
-    #[test]
+    /*#[test]
     fn opcode_caller_0() {
         vm_assert_eq("
             CALLER
