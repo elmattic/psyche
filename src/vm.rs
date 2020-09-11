@@ -277,6 +277,24 @@ macro_rules! extend_memory {
     }
 }
 
+fn log256(value: u64) -> u64 {
+    value.wrapping_sub(1) / 8
+}
+
+macro_rules! metered_exp {
+    ($exponent_bits:expr, $schedule:ident, $gas:ident, $error:ident) => {
+        let fee = $schedule.fees[Fee::Exp as usize] as u64;
+        let cost = ($exponent_bits > 0) as u64 * fee * (1 + log256($exponent_bits));
+        let (newgas, oog) = $gas.overflowing_sub(cost);
+        $gas = newgas;
+        //if std::intrinsics::unlikely(oog) {
+        if oog {
+            $error = VmError::OutOfGas;
+            break;
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct ReturnData {
     pub offset: usize,
@@ -420,7 +438,9 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 comment!("opEXP");
                 let a = stack.pop_u256();
                 let b = stack.pop_u256();
-                let result = exp_u256(a, b);
+                let exponent_bits = 256-leading_zeros_u256(b);
+                metered_exp!(exponent_bits as u64, schedule, gas, error);
+                let result = exp_u256(a, b, exponent_bits);
                 stack.push(result);
                 //
                 pc += 1;

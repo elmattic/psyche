@@ -1284,7 +1284,7 @@ pub unsafe fn abs_u256(value: U256) -> U256 {
     blend_u256(value, negv, isneg)
 }
 
-fn leading_zeros_u256(value: U256) -> usize {
+pub fn leading_zeros_u256(value: U256) -> usize {
     let mask3 = -((value.0[3] == 0) as i64) as u64;
     let mask2 = -((value.0[2] == 0) as i64) as u64;
     let mask1 = -((value.0[1] == 0) as i64) as u64;
@@ -1487,8 +1487,7 @@ pub unsafe fn mulmod_u256(a: U256, b: U256, c: U256) -> U256 {
     rv
 }
 
-pub fn exp_u256(base: U256, exponent: U256) -> U256 {
-    let num_bits = 256-leading_zeros_u256(exponent);
+pub fn exp_u256(base: U256, exponent: U256, exponent_bits: usize) -> U256 {
     let mut result = U256::from_u64(1);
     let mut acc = base;
     let mut i = 0;
@@ -1498,7 +1497,7 @@ pub fn exp_u256(base: U256, exponent: U256) -> U256 {
             result = mul_u256(result, acc);
         }
         i += 1;
-        if i < num_bits {
+        if i < exponent_bits {
             acc = mul_u256(acc, acc);
             continue;
         }
