@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Psyche. If not, see <http://www.gnu.org/licenses/>.
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum Fork {
     Frontier = 0,
     Thawing = 1,
@@ -29,9 +29,42 @@ pub enum Fork {
 
 const FORK_LEN: usize = 9;
 
+pub const fn to_block_number(fork: Fork) -> u64 {
+    match fork {
+        Fork::Frontier => 1,
+        Fork::Thawing => 200_000,
+        Fork::Homestead => 1_150_000,
+        Fork::Dao => 1_920_000,
+        Fork::Tangerine => 2_463_000,
+        Fork::Spurious => 2_675_000,
+        Fork::Byzantium => 4_370_000,
+        Fork::Constantinople => 7_280_000,
+        Fork::Istanbul => 9_069_000,
+    }
+}
+
 impl Fork {
-    pub fn default() -> Fork {
+    pub const fn default() -> Fork {
         Fork::Frontier
+    }
+
+    pub fn from_block(number: u64) -> Fork {
+        const BLOCK_FORKS: [(u64, Fork); FORK_LEN] = [
+            (to_block_number(Fork::Frontier), Fork::Frontier),
+            (to_block_number(Fork::Thawing), Fork::Thawing),
+            (to_block_number(Fork::Homestead), Fork::Homestead),
+            (to_block_number(Fork::Dao), Fork::Dao),
+            (to_block_number(Fork::Tangerine), Fork::Tangerine),
+            (to_block_number(Fork::Spurious), Fork::Spurious),
+            (to_block_number(Fork::Byzantium), Fork::Byzantium),
+            (to_block_number(Fork::Constantinople), Fork::Constantinople),
+            (to_block_number(Fork::Istanbul), Fork::Istanbul),
+        ];
+        assert!(number != 0, "block number must be greater than 0");
+        let pos = BLOCK_FORKS
+            .iter()
+            .position(|(x, _)| *x > number);
+        BLOCK_FORKS[pos.unwrap_or(FORK_LEN)-1].1
     }
 }
 
