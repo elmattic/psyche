@@ -287,7 +287,7 @@ fn log256(value: u64) -> u64 {
 
 macro_rules! meter_exp {
     ($exponent_bits:expr, $schedule:ident, $gas:ident, $error:ident) => {
-        let fee = $schedule.fees[Fee::Exp as usize] as u64;
+        let fee = $schedule.fees[Fee::ExpByte as usize] as u64;
         let cost = ($exponent_bits > 0) as u64 * fee * (1 + log256($exponent_bits));
         let (newgas, oog) = $gas.overflowing_sub(cost);
         $gas = newgas;
