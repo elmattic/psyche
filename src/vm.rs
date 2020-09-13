@@ -21,7 +21,7 @@ use crate::schedule::{Fee, Schedule};
 use crate::schedule::Fee::*;
 use crate::u256::*;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum VmError {
     None,
     StackUnderflow,
@@ -316,15 +316,26 @@ macro_rules! meter_sha3 {
 pub struct ReturnData {
     pub offset: usize,
     pub size: usize,
-    pub gas: u64
+    pub gas: u64,
+    pub error: VmError,
 }
 
 impl ReturnData {
-    pub fn new(offset: usize, size: usize, gas: u64) -> Self {
+    pub fn new(offset: usize, size: usize, gas: u64, error: VmError) -> Self {
         ReturnData {
-            offset: offset,
-            size: size,
-            gas: gas
+            offset,
+            size,
+            gas,
+            error,
+        }
+    }
+    
+    pub fn ok(offset: usize, size: usize, gas: u64) -> Self {
+        ReturnData {
+            offset,
+            size,
+            gas,
+            error: VmError::None,
         }
     }
 }
@@ -357,7 +368,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
     while !entered {
         entered = true;
         check_exception_at!(0, gas, rom, stack, error);
-        panic!("{:?}", error);
+        return ReturnData::new(0, 0, gas, error);
     }
     loop {
         let opcode = *code.offset(pc as isize);
@@ -828,7 +839,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 let offset = stack.pop_u256();
                 let size = stack.pop_u256();
                 extend_memory!(offset, size, schedule, memory, gas, error);
-                return ReturnData::new(offset.low_u64() as usize, size.low_u64() as usize, 0)
+                return ReturnData::ok(offset.low_u64() as usize, size.low_u64() as usize, gas)
             }
             Opcode::DELEGATECALL | Opcode::CREATE2 | Opcode::STATICCALL | Opcode::REVERT => unimplemented!(),
             Opcode::INVALID => {
@@ -838,10 +849,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
             Opcode::SELFDESTRUCT => unimplemented!(),
         }
     }
-    if let VmError::None = error {
-        return ReturnData::new(0, 0, 0);
-    }
-    panic!("{:?}", error);
+    return ReturnData::new(0, 0, gas, error);
 }
 
 #[derive(Debug)]

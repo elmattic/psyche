@@ -35,7 +35,7 @@ use instructions::{EvmOpcode, EvmInstruction};
 use schedule::{Schedule};
 use utils::{encode_hex, decode_hex, print_config};
 use u256::U256;
-use vm::{VmMemory, VmRom, run_evm};
+use vm::{VmMemory, VmRom, VmError, run_evm};
 
 const VM_DEFAULT_GAS: u64 = 20_000_000_000_000;
 
@@ -142,10 +142,14 @@ fn evm(bytes: &Vec<u8>, gas_limit: U256) {
     rom.init(&bytes, &schedule);
     let mut memory = VmMemory::new();
     memory.init(gas_limit);
-    let slice = unsafe {
+    let (err, slice) = unsafe {
         let ret_data = run_evm(&bytes, &rom, &schedule, gas_limit, &mut memory);
-        memory.slice(ret_data.offset as isize, ret_data.size)
+        (ret_data.error, memory.slice(ret_data.offset as isize, ret_data.size))
     };
+    if err != VmError::None {
+        println!("{:?}", err);
+        return;
+    }
     let mut buffer = String::with_capacity(512);
     for byte in slice {
         let _ = write!(buffer, "{:02x}", byte);
