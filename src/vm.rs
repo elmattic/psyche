@@ -192,6 +192,10 @@ impl VmMemory {
     }
 }
 
+fn num_words(value: u64) -> u64 {
+    ((value as u128 + 31) / 32) as u64
+}
+
 macro_rules! comment {
    ($lit:literal) => (
         #[cfg(feature = "asm-comment")]
@@ -226,7 +230,7 @@ macro_rules! check_exception_at {
     }
 }
 
-macro_rules! metered_extend {
+macro_rules! meter_extend {
     ($new_len:ident, $overflow:ident, $schedule:ident, $memory:ident, $gas:ident, $error:ident) => {
         if !$overflow {
             let len = $memory.len as u64;
@@ -255,7 +259,7 @@ macro_rules! extend_memory {
                 let (temp, overflow) = $offset.low_u64().overflowing_add($size + 31);
                 (temp / 32, overflow)
             };
-            metered_extend!(new_len, overflow, $schedule, $memory, $gas, $error);
+            meter_extend!(new_len, overflow, $schedule, $memory, $gas, $error);
         } else {
             $error = VmError::OutOfGas;
             break;
@@ -269,7 +273,7 @@ macro_rules! extend_memory {
                 (temp2 / 32, overflow1 | overflow2)
             };
             let new_len = if $size.low_u64() == 0 { $memory.len as u64 } else { new_len };
-            metered_extend!(new_len, overflow, $schedule, $memory, $gas, $error);
+            meter_extend!(new_len, overflow, $schedule, $memory, $gas, $error);
         } else {
             $error = VmError::OutOfGas;
             break;
@@ -281,7 +285,7 @@ fn log256(value: u64) -> u64 {
     value.wrapping_sub(1) / 8
 }
 
-macro_rules! metered_exp {
+macro_rules! meter_exp {
     ($exponent_bits:expr, $schedule:ident, $gas:ident, $error:ident) => {
         let fee = $schedule.fees[Fee::Exp as usize] as u64;
         let cost = ($exponent_bits > 0) as u64 * fee * (1 + log256($exponent_bits));
@@ -289,6 +293,19 @@ macro_rules! metered_exp {
         $gas = newgas;
         //if std::intrinsics::unlikely(oog) {
         if oog {
+            $error = VmError::OutOfGas;
+            break;
+        }
+    }
+}
+
+macro_rules! meter_sha3 {
+    ($size:ident, $schedule:ident, $gas:ident, $error:ident) => {
+        let fee = $schedule.fees[Fee::Sha3Word as usize] as u64;
+        let (cost, ovf) = num_words($size.low_u64()).overflowing_mul(fee);
+        let (newgas, oog) = $gas.overflowing_sub(cost as u64);
+        $gas = newgas;
+        if oog | ovf | !$size.le_u64() {
             $error = VmError::OutOfGas;
             break;
         }
@@ -439,7 +456,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 let a = stack.pop_u256();
                 let b = stack.pop_u256();
                 let exponent_bits = 256-leading_zeros_u256(b);
-                metered_exp!(exponent_bits as u64, schedule, gas, error);
+                meter_exp!(exponent_bits as u64, schedule, gas, error);
                 let result = exp_u256(a, b, exponent_bits);
                 stack.push(result);
                 //
@@ -591,6 +608,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 comment!("opSHA3");
                 let offset = stack.pop_u256();
                 let size = stack.pop_u256();
+                meter_sha3!(size, schedule, gas, error);
                 extend_memory!(offset, size, schedule, memory, gas, error);
                 let offset = offset.low_u64() as isize;
                 let size = size.low_u64() as usize;

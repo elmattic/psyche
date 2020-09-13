@@ -27,6 +27,8 @@ pub enum Fork {
     Istanbul = 8,
 }
 
+const FORK_LEN: usize = 9;
+
 impl Fork {
     pub fn default() -> Fork {
         Fork::Frontier
@@ -44,10 +46,14 @@ pub enum Fee {
     Balance,
     Jumpdest,
     Exp,
+    ExpByte,
     Sha3,
+    Sha3Word,
     Copy,
     Blockhash,
 }
+
+const FEE_LEN: usize = 14;
 
 impl Fee {
     /// Returns the gas cost associated to a given fork
@@ -58,7 +64,7 @@ impl Fee {
 
 #[derive(Debug)]
 pub struct Schedule {
-    pub fees: [u32; 12],
+    pub fees: [u32; FEE_LEN],
     pub memory_gas: u64
 }
 
@@ -68,16 +74,16 @@ impl Schedule {
     }
 
     pub fn from_fork(fork: Fork) -> Schedule {
-        const COSTS: [[u32; 12]; 9] = [
-            [0, 2, 3, 5, 8, 10,  20, 1, 10, 30, 3, 20], // Frontier
-            [0, 2, 3, 5, 8, 10,  20, 1, 10, 30, 3, 20], // Thawing
-            [0, 2, 3, 5, 8, 10,  20, 1, 10, 30, 3, 20], // Homestead
-            [0, 2, 3, 5, 8, 10,  20, 1, 10, 30, 3, 20], // Dao
-            [0, 2, 3, 5, 8, 10, 400, 1, 10, 30, 3, 20], // Tangerine
-            [0, 2, 3, 5, 8, 10, 400, 1, 10, 30, 3, 20], // Spurious
-            [0, 2, 3, 5, 8, 10, 400, 1, 10, 30, 3, 20], // Byzantium
-            [0, 2, 3, 5, 8, 10, 400, 1, 10, 30, 3, 20], // Constantinople
-            [0, 2, 3, 5, 8, 10, 400, 1, 10, 30, 3, 20], // Istanbul
+        const COSTS: [[u32; FEE_LEN]; FORK_LEN] = [
+            [0, 2, 3, 5, 8, 10,  20, 1, 10, 10, 30, 6, 3, 20], // Frontier
+            [0, 2, 3, 5, 8, 10,  20, 1, 10, 10, 30, 6, 3, 20], // Thawing
+            [0, 2, 3, 5, 8, 10,  20, 1, 10, 10, 30, 6, 3, 20], // Homestead
+            [0, 2, 3, 5, 8, 10,  20, 1, 10, 10, 30, 6, 3, 20], // Dao
+            [0, 2, 3, 5, 8, 10, 400, 1, 10, 10, 30, 6, 3, 20], // Tangerine
+            [0, 2, 3, 5, 8, 10, 400, 1, 10, 50, 30, 6, 3, 20], // Spurious
+            [0, 2, 3, 5, 8, 10, 400, 1, 10, 50, 30, 6, 3, 20], // Byzantium
+            [0, 2, 3, 5, 8, 10, 400, 1, 10, 50, 30, 6, 3, 20], // Constantinople
+            [0, 2, 3, 5, 8, 10, 400, 1, 10, 50, 30, 6, 3, 20], // Istanbul
         ];
         Schedule {
             fees: COSTS[fork as usize],
