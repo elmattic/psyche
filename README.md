@@ -33,6 +33,15 @@ always present on all Intel-based Macs.
 If you want to inspect assembly code you will also need to uncomment the line
 with ```#![feature(asm)]```.
 
+## Debug
+
+If you have **lldb** installed on your machine you can add this line to your ```.lldbinit``` file:
+
+```command script import evmd.py```
+
+[![asciicast](https://asciinema.org/a/360189.svg)](https://asciinema.org/a/360189)
+
+
 ## License
 
 [LICENSE](https://github.com/elmattic/psyche/blob/master/LICENSE)
