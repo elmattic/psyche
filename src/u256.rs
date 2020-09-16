@@ -403,17 +403,19 @@ pub unsafe fn is_ltpow2_u256(value: U256, pow2: usize) -> bool {
     return result;
 }
 
+#[cfg(target_feature = "avx2")]
 unsafe fn broadcast_avx2(value: bool) -> __m256i {
     let mask = _mm_set_epi32(0, 0, 0, if value { -1 } else { 0 });
     return _mm256_broadcastd_epi32(mask);
 }
 
+#[cfg(target_feature = "sse2")]
 unsafe fn broadcast_sse2(value: bool) -> __m128i {
     let mask = _mm_set_epi32(0, 0, 0, if value { -1 } else { 0 });
     return _mm_shuffle_epi32(mask, 0);
 }
 
-#[inline(always)]
+#[cfg(target_feature = "sse2")]
 #[allow(unreachable_code)]
 unsafe fn mm_blendv_epi8(a: __m128i, b: __m128i, mask: __m128i) -> __m128i {
     #[cfg(target_feature = "sse4.1")]
@@ -421,6 +423,28 @@ unsafe fn mm_blendv_epi8(a: __m128i, b: __m128i, mask: __m128i) -> __m128i {
         return _mm_blendv_epi8(a, b, mask);
     }
     return _mm_or_si128(_mm_and_si128(b, mask), _mm_andnot_si128(mask, a));
+}
+
+#[cfg(target_feature = "sse2")]
+#[allow(unreachable_code)]
+unsafe fn mm_cmpeq_epi64(a: __m128i, b: __m128i) -> __m128i {
+    #[cfg(target_feature = "sse4.1")]
+    {
+        return _mm_cmpeq_epi64(a, b);
+    }
+    let mask = _mm_cmpeq_epi32(a, b);
+    let smask = _mm_shuffle_epi32(mask, _MM_SHUFFLE(2, 3, 0, 1));
+    return _mm_and_si128(mask, smask);
+}
+
+#[cfg(target_feature = "sse2")]
+#[allow(unreachable_code)]
+unsafe fn mm_select_si128(a: __m128i, b: __m128i, mask: __m128i) -> __m128i {
+    #[cfg(target_feature = "sse4.1")]
+    {
+        return _mm_blendv_epi8(a, b, mask);
+    }
+    return _mm_or_si128(_mm_and_si128(b, mask), a);
 }
 
 fn blend_u64(a: u64, b: u64, mask: u64) -> u64 {
@@ -679,12 +703,6 @@ unsafe fn bmask_ssse3(bcount: __m128i) -> (__m128i, __m128i) {
 }
 
 #[inline(always)]
-#[allow(unreachable_code)]
-unsafe fn mm_andor_si128(a: __m128i, b: __m128i, c: __m128i) -> __m128i {
-    return _mm_or_si128(_mm_and_si128(a, b), c);
-}
-
-#[inline(always)]
 #[cfg(target_feature = "ssse3")]
 unsafe fn bshrmsb_ssse3(value: (__m128i, __m128i), count: __m128i, arithmetic: bool) -> ((__m128i, __m128i), __m128i) {
     let zero = _mm_setzero_si128();
@@ -710,8 +728,8 @@ unsafe fn bshrmsb_ssse3(value: (__m128i, __m128i), count: __m128i, arithmetic: b
         let srav = _mm_srai_epi32(value.1, 31);
         let msb = _mm_shuffle_epi8(srav, _mm_shuffle_epi8(fifteen, zero));
         let (masklo, maskhi) = bmask_ssse3(bcount);
-        let resultlo = mm_andor_si128(msb, masklo, resultlo);
-        let resulthi = mm_andor_si128(msb, maskhi, resulthi);
+        let resultlo = mm_select_si128(resultlo, msb, masklo);
+        let resulthi = mm_select_si128(resulthi, msb, maskhi);
         return ((resultlo, resulthi), msb);
     } else {
         return ((resultlo, resulthi), zero);
@@ -1193,8 +1211,8 @@ pub unsafe fn negate_u256(value: U256) -> U256 {
         let value = std::mem::transmute::<U256, (__m128i, __m128i)>(value);
         let notvlo = _mm_andnot_si128(value.0, all_ones);
         let notvhi = _mm_andnot_si128(value.1, all_ones);
-        let mask0lo = _mm_cmpeq_epi64(all_ones, notvlo);
-        let mask0hi = _mm_cmpeq_epi64(all_ones, notvhi);
+        let mask0lo = mm_cmpeq_epi64(all_ones, notvlo);
+        let mask0hi = mm_cmpeq_epi64(all_ones, notvhi);
         let mask1lo = _mm_or_si128(_mm_bslli_si128(mask0lo, 8), max_u64);
         let mask1hi = _mm_unpackhi_epi64(mask0lo, _mm_bslli_si128(mask0hi, 8));
         let mask3hi = _mm_or_si128(_mm_bslli_si128(mask0lo, 8), max_u64);
@@ -1646,7 +1664,7 @@ pub unsafe fn sha3_u256(input: *const u8, size: usize) -> U256 {
     result
 }
 
-#[inline(always)]
+#[cfg(target_feature = "sse2")]
 #[allow(unreachable_code)]
 unsafe fn mm_extract_epi64(a: __m128i, imm8: i32) -> i64 {
     #[cfg(target_feature = "sse4.1")]
@@ -1668,7 +1686,7 @@ unsafe fn mm_extract_epi64(a: __m128i, imm8: i32) -> i64 {
     unreachable!()
 }
 
-#[cfg(target_feature = "ssse3")]
+#[cfg(target_feature = "sse2")]
 fn assert_word_eq(a: (__m128i, __m128i), b: (__m128i, __m128i)) {
     unsafe {
         assert_eq!(mm_extract_epi64(a.0, 0), mm_extract_epi64(b.0, 0));
