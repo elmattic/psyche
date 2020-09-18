@@ -7,7 +7,7 @@
 - [x] Research, implement and optimize interpretation of EVM bytecode
    in stable Rust.
 - [x] Explore around using special CPU instructions to speed up most opcodes.
-- [x] Support a generic target for best portability (64-bits, 32 bits).
+- [x] Support a generic target for best portability (64-bit and 32-bit CPUs).
 - [x] Optimize for the worst-case (do not optimize average-case at the expense of
    worst-case).
 - [ ] Improve Rust compiler for better opcode dispatch via ```indirectbr``` instruction.
