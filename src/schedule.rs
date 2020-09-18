@@ -61,10 +61,8 @@ impl Fork {
             (to_block_number(Fork::Istanbul), Fork::Istanbul),
         ];
         assert!(number != 0, "block number must be greater than 0");
-        let pos = BLOCK_FORKS
-            .iter()
-            .position(|(x, _)| *x > number);
-        BLOCK_FORKS[pos.unwrap_or(FORK_LEN)-1].1
+        let pos = BLOCK_FORKS.iter().position(|(x, _)| *x > number);
+        BLOCK_FORKS[pos.unwrap_or(FORK_LEN) - 1].1
     }
 }
 
@@ -93,12 +91,12 @@ impl Fee {
     pub fn gas(self, schedule: &Schedule) -> u32 {
         schedule.fees[self as usize]
     }
- }
+}
 
 #[derive(Debug)]
 pub struct Schedule {
     pub fees: [u32; FEE_LEN],
-    pub memory_gas: u64
+    pub memory_gas: u64,
 }
 
 impl Schedule {
@@ -108,10 +106,10 @@ impl Schedule {
 
     pub fn from_fork(fork: Fork) -> Schedule {
         const COSTS: [[u32; FEE_LEN]; FORK_LEN] = [
-            [0, 2, 3, 5, 8, 10,  20, 1, 10, 10, 30, 6, 3, 20], // Frontier
-            [0, 2, 3, 5, 8, 10,  20, 1, 10, 10, 30, 6, 3, 20], // Thawing
-            [0, 2, 3, 5, 8, 10,  20, 1, 10, 10, 30, 6, 3, 20], // Homestead
-            [0, 2, 3, 5, 8, 10,  20, 1, 10, 10, 30, 6, 3, 20], // Dao
+            [0, 2, 3, 5, 8, 10, 20, 1, 10, 10, 30, 6, 3, 20], // Frontier
+            [0, 2, 3, 5, 8, 10, 20, 1, 10, 10, 30, 6, 3, 20], // Thawing
+            [0, 2, 3, 5, 8, 10, 20, 1, 10, 10, 30, 6, 3, 20], // Homestead
+            [0, 2, 3, 5, 8, 10, 20, 1, 10, 10, 30, 6, 3, 20], // Dao
             [0, 2, 3, 5, 8, 10, 400, 1, 10, 10, 30, 6, 3, 20], // Tangerine
             [0, 2, 3, 5, 8, 10, 400, 1, 10, 50, 30, 6, 3, 20], // Spurious
             [0, 2, 3, 5, 8, 10, 400, 1, 10, 50, 30, 6, 3, 20], // Byzantium
@@ -120,7 +118,7 @@ impl Schedule {
         ];
         Schedule {
             fees: COSTS[fork as usize],
-            memory_gas: 3
+            memory_gas: 3,
         }
     }
 }

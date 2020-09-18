@@ -17,10 +17,9 @@
 #[cfg(test)]
 mod tests {
     use psyche::assembler;
-    use psyche::schedule::{Schedule, Fork};
-    use psyche::utils;
+    use psyche::schedule::{Fork, Schedule};
     use psyche::u256::U256;
-    use psyche::vm::{VmMemory, VmRom, VmError, run_evm};
+    use psyche::vm::{run_evm, VmError, VmMemory, VmRom};
 
     const TEST_GAS: u64 = 20_000_000_000_000;
 
@@ -39,15 +38,15 @@ mod tests {
         };
         if err == VmError::None {
             assert_eq!(Ok(gas_used), expected);
-        }
-        else {
+        } else {
             assert_eq!(Err(err), expected)
         }
     }
 
     #[test]
     fn gas_sha3_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             PUSH1 0x00
             SHA3
@@ -59,7 +58,8 @@ mod tests {
 
     #[test]
     fn gas_sha3_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x01
             PUSH1 0x00
             SHA3
@@ -71,7 +71,8 @@ mod tests {
 
     #[test]
     fn gas_sha3_2() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x21
             PUSH1 0x00
             SHA3
@@ -83,7 +84,8 @@ mod tests {
 
     #[test]
     fn gas_sha3_3() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH2 0x02e0
             PUSH1 0x00
             SHA3
@@ -95,7 +97,8 @@ mod tests {
 
     #[test]
     fn gas_sha3_4() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH8 0x3fffffffffffffff
             PUSH1 0x00
             SHA3

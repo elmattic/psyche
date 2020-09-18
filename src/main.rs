@@ -21,37 +21,40 @@ extern crate num_derive;
 mod assembler;
 mod instructions;
 mod schedule;
-mod utils;
 mod u256;
+mod utils;
 mod vm;
 
-use clap::{Arg, App, SubCommand};
+use clap::{App, Arg, SubCommand};
 
 use std::convert::TryFrom;
 use std::fmt::{self, Write};
 use std::fs;
 
-use instructions::{EvmOpcode, EvmInstruction};
-use schedule::{Schedule};
-use utils::{encode_hex, decode_hex, print_config};
+use instructions::{EvmInstruction, EvmOpcode};
+use schedule::Schedule;
 use u256::U256;
-use vm::{VmMemory, VmRom, VmError, run_evm};
+use utils::{decode_hex, encode_hex, print_config};
+use vm::{run_evm, VmError, VmMemory, VmRom};
 
 const VM_DEFAULT_GAS: u64 = 20_000_000_000_000;
 
 struct Bytecode<'a> {
     data: &'a [u8],
-    addr: usize
+    addr: usize,
 }
 
 impl<'a> Bytecode<'a> {
     fn new(bytes: &'a [u8]) -> Bytecode<'a> {
-        Bytecode { data: bytes, addr: 0 }
+        Bytecode {
+            data: bytes,
+            addr: 0,
+        }
     }
 }
 
 struct IncompletePushError {
-    addr: usize
+    addr: usize,
 }
 
 impl fmt::Display for IncompletePushError {
@@ -71,31 +74,30 @@ impl<'a> Iterator for Bytecode<'a> {
                         let num_bytes = opcode.push_index() + 1;
                         let start = self.addr + 1;
                         let end = start + num_bytes;
-                        if (end-1) < self.data.len() {
+                        if (end - 1) < self.data.len() {
                             let temp = EvmInstruction::MultiByte {
                                 addr: self.addr,
                                 opcode: opcode,
-                                bytes: &self.data[start..end]
+                                bytes: &self.data[start..end],
                             };
                             self.addr += 1 + num_bytes;
                             Some(Ok(temp))
                         } else {
                             Some(Err(IncompletePushError { addr: self.addr }))
                         }
-                    }
-                    else {
+                    } else {
                         let temp = EvmInstruction::SingleByte {
                             addr: self.addr,
-                            opcode: opcode
+                            opcode: opcode,
                         };
                         self.addr += 1;
                         Some(Ok(temp))
                     }
-                },
+                }
                 Err(_) => {
                     let temp = EvmInstruction::SingleByte {
                         addr: self.addr,
-                        opcode: EvmOpcode::INVALID
+                        opcode: EvmOpcode::INVALID,
                     };
                     self.addr += 1;
                     Some(Ok(temp))
@@ -119,20 +121,24 @@ fn disasm(input: &str) {
                         .map(|i| match i {
                             EvmInstruction::SingleByte { addr, opcode } => {
                                 format!("{:04x}:    {}", addr, opcode)
-                            },
-                            EvmInstruction::MultiByte { addr, opcode, bytes } => {
+                            }
+                            EvmInstruction::MultiByte {
+                                addr,
+                                opcode,
+                                bytes,
+                            } => {
                                 let imm = encode_hex(bytes);
                                 format!("{:04x}:    {} 0x{}", addr, opcode, imm)
-                            },
+                            }
                         })
                         .collect::<Vec<_>>()
                         .join("\n");
                     println!("{}", asm);
-                },
-                Err(e) => println!("{}", e)
+                }
+                Err(e) => println!("{}", e),
             }
         }
-        Err(e) => println!("{:?}", e)
+        Err(e) => println!("{:?}", e),
     }
 }
 
@@ -144,7 +150,10 @@ fn evm(bytes: &Vec<u8>, gas_limit: U256) {
     memory.init(gas_limit);
     let (err, slice) = unsafe {
         let ret_data = run_evm(&bytes, &rom, &schedule, gas_limit, &mut memory);
-        (ret_data.error, memory.slice(ret_data.offset as isize, ret_data.size))
+        (
+            ret_data.error,
+            memory.slice(ret_data.offset as isize, ret_data.size),
+        )
     };
     if err != VmError::None {
         println!("{:?}", err);
@@ -176,43 +185,62 @@ fn kick(filename: &str) {
 }
 
 fn main() {
-    let matches =
-        App::new("Psyche")
-            .subcommand(SubCommand::with_name("evm")
+    let matches = App::new("Psyche")
+        .subcommand(
+            SubCommand::with_name("evm")
                 .about("Run EVM bytecode")
-                .arg(Arg::with_name("CODE")
-                    .index(1)
-                    .required(true)
-                    .help("Contract code as hex (without 0x)"))
-                .arg(Arg::with_name("GAS")
-                    .takes_value(true)
-                    .short("g")
-                    .long("gas")
-                    .help("Supplied gas as decimal")))
-            .subcommand(SubCommand::with_name("asm")
+                .arg(
+                    Arg::with_name("CODE")
+                        .index(1)
+                        .required(true)
+                        .help("Contract code as hex (without 0x)"),
+                )
+                .arg(
+                    Arg::with_name("GAS")
+                        .takes_value(true)
+                        .short("g")
+                        .long("gas")
+                        .help("Supplied gas as decimal"),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("asm")
                 .about("Assemble EVM bytecode")
-                .arg(Arg::with_name("INPUT")
-                    .index(1)
-                    .required(true)
-                    .help("The .ass file to assemble")))
-            .subcommand(SubCommand::with_name("kick")
+                .arg(
+                    Arg::with_name("INPUT")
+                        .index(1)
+                        .required(true)
+                        .help("The .ass file to assemble"),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("kick")
                 .about("Assemble EVM bytecode and run it")
-                .arg(Arg::with_name("INPUT")
-                    .index(1)
-                    .required(true)
-                    .help("The .ass file to assemble and run")))
-            .subcommand(SubCommand::with_name("disasm")
+                .arg(
+                    Arg::with_name("INPUT")
+                        .index(1)
+                        .required(true)
+                        .help("The .ass file to assemble and run"),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("disasm")
                 .about("Disassemble EVM bytecode")
-                .arg(Arg::with_name("CODE")
-                    .index(1)
-                    .required(true)
-                    .help("Contract code as hex (without 0x)")))
-            .arg(Arg::with_name("verbose")
+                .arg(
+                    Arg::with_name("CODE")
+                        .index(1)
+                        .required(true)
+                        .help("Contract code as hex (without 0x)"),
+                ),
+        )
+        .arg(
+            Arg::with_name("verbose")
                 .short("v")
                 .long("verbose")
                 .multiple(true)
-                .help("Sets verbose output"))
-            .get_matches();
+                .help("Sets verbose output"),
+        )
+        .get_matches();
 
     if matches.is_present("verbose") {
         print_config();
@@ -222,13 +250,13 @@ fn main() {
         if let Some(value) = matches.value_of("GAS") {
             match U256::from_dec_str(value) {
                 Ok(temp) => gas = temp,
-                Err(err) => println!("Invalid --gas: {:?}", err)
+                Err(err) => println!("Invalid --gas: {:?}", err),
             }
         }
         let hex_str = matches.value_of("CODE").unwrap();
         match decode_hex(hex_str) {
             Ok(bytes) => evm(&bytes, gas),
-            Err(e) => println!("{:?}", e)
+            Err(e) => println!("{:?}", e),
         }
         return;
     }

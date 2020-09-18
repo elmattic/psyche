@@ -17,8 +17,8 @@
 use std::convert::TryFrom;
 
 use crate::instructions::{EvmOpcode, Opcode};
-use crate::schedule::{Fee, Schedule};
 use crate::schedule::Fee::*;
+use crate::schedule::{Fee, Schedule};
 use crate::u256::*;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -94,7 +94,7 @@ impl VmStack {
 pub struct VmMemory {
     mmap: Option<memmap::MmapMut>,
     ptr: *mut u8,
-    pub len: usize
+    pub len: usize,
 }
 
 fn memory_gas_cost(memory_gas: u64, num_words: u64) -> u128 {
@@ -113,7 +113,7 @@ fn memory_extend_gas_cost(memory_gas: u64, num_words: u64, new_num_words: u64) -
 macro_rules! unsupported_gas {
     () => {
         panic!("unsupported gas amount")
-    }
+    };
 }
 
 impl VmMemory {
@@ -121,7 +121,7 @@ impl VmMemory {
         VmMemory {
             mmap: None,
             ptr: std::ptr::null_mut(),
-            len: 0
+            len: 0,
         }
     }
 
@@ -154,7 +154,7 @@ impl VmMemory {
         }
         let num_bytes = match usize::try_from(num_bytes) {
             Ok(value) => value,
-            Err(_) => unsupported_gas!()
+            Err(_) => unsupported_gas!(),
         };
         if num_bytes > 0 {
             match memmap::MmapMut::map_anon(num_bytes) {
@@ -162,7 +162,7 @@ impl VmMemory {
                     self.ptr = mmap.as_mut_ptr();
                     self.mmap = Some(mmap);
                 }
-                Err(e) => panic!(e)
+                Err(e) => panic!(e),
             }
         }
     }
@@ -197,12 +197,12 @@ fn num_words(value: u64) -> u64 {
 }
 
 macro_rules! comment {
-   ($lit:literal) => (
+    ($lit:literal) => {
         #[cfg(feature = "asm-comment")]
         {
             asm!(concat!("// ", $lit));
         }
-    )
+    };
 }
 
 macro_rules! check_exception_at {
@@ -227,7 +227,7 @@ macro_rules! check_exception_at {
         if overflow {
             $error = VmError::StackOverflow;
         }
-    }
+    };
 }
 
 macro_rules! meter_extend {
@@ -249,7 +249,7 @@ macro_rules! meter_extend {
             $error = VmError::OutOfGas;
             break;
         }
-    }
+    };
 }
 
 macro_rules! extend_memory {
@@ -272,13 +272,17 @@ macro_rules! extend_memory {
                 let (temp2, overflow2) = temp1.overflowing_add(31);
                 (temp2 / 32, overflow1 | overflow2)
             };
-            let new_len = if $size.low_u64() == 0 { $memory.len as u64 } else { new_len };
+            let new_len = if $size.low_u64() == 0 {
+                $memory.len as u64
+            } else {
+                new_len
+            };
             meter_extend!(new_len, overflow, $schedule, $memory, $gas, $error);
         } else {
             $error = VmError::OutOfGas;
             break;
         }
-    }
+    };
 }
 
 fn log256(value: u64) -> u64 {
@@ -296,7 +300,7 @@ macro_rules! meter_exp {
             $error = VmError::OutOfGas;
             break;
         }
-    }
+    };
 }
 
 macro_rules! meter_sha3 {
@@ -309,7 +313,7 @@ macro_rules! meter_sha3 {
             $error = VmError::OutOfGas;
             break;
         }
-    }
+    };
 }
 
 #[derive(Debug)]
@@ -329,7 +333,7 @@ impl ReturnData {
             error,
         }
     }
-    
+
     pub fn ok(offset: usize, size: usize, gas: u64) -> Self {
         ReturnData {
             offset,
@@ -353,10 +357,16 @@ macro_rules! lldb_hook {
             let msize = $memory.size();
             $hook($pc, gas, ssize, msize);
         }
-    }
+    };
 }
 
-pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_limit: U256, memory: &mut VmMemory) -> ReturnData {
+pub unsafe fn run_evm(
+    bytecode: &[u8],
+    rom: &VmRom,
+    schedule: &Schedule,
+    gas_limit: U256,
+    memory: &mut VmMemory,
+) -> ReturnData {
     // TODO: use MaybeUninit
     let mut slots: VmStackSlots = std::mem::uninitialized();
     let mut stack: VmStack = VmStack::new(&mut slots);
@@ -378,7 +388,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
             Opcode::STOP => {
                 lldb_hook!(pc, gas, stack, memory, lldb_hook_stop);
                 break;
-            },
+            }
             Opcode::ADD => {
                 comment!("opADD");
                 let a = stack.pop_u256();
@@ -466,7 +476,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 comment!("opEXP");
                 let a = stack.pop_u256();
                 let b = stack.pop_u256();
-                let exponent_bits = 256-leading_zeros_u256(b);
+                let exponent_bits = 256 - leading_zeros_u256(b);
                 meter_exp!(exponent_bits as u64, schedule, gas, error);
                 let result = exp_u256(a, b, exponent_bits);
                 stack.push(result);
@@ -625,14 +635,35 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             }
-            | Opcode::ADDRESS | Opcode::BALANCE | Opcode::ORIGIN | Opcode::CALLER | Opcode::CALLVALUE | Opcode::CALLDATALOAD | Opcode::CALLDATASIZE | Opcode::CALLDATACOPY => unimplemented!(),
+            Opcode::ADDRESS
+            | Opcode::BALANCE
+            | Opcode::ORIGIN
+            | Opcode::CALLER
+            | Opcode::CALLVALUE
+            | Opcode::CALLDATALOAD
+            | Opcode::CALLDATASIZE
+            | Opcode::CALLDATACOPY => unimplemented!(),
             Opcode::CODESIZE => {
                 comment!("opCODESIZE");
                 stack.push(U256::from_u64(bytecode.len() as u64));
                 //
                 pc += 1;
             }
-            Opcode::CODECOPY | Opcode::GASPRICE | Opcode::EXTCODESIZE | Opcode::EXTCODECOPY | Opcode::RETURNDATASIZE | Opcode::RETURNDATACOPY | Opcode::EXTCODEHASH | Opcode::BLOCKHASH | Opcode::COINBASE | Opcode::TIMESTAMP | Opcode::NUMBER | Opcode::DIFFICULTY | Opcode::GASLIMIT | Opcode::CHAINID | Opcode::SELFBALANCE => unimplemented!(),
+            Opcode::CODECOPY
+            | Opcode::GASPRICE
+            | Opcode::EXTCODESIZE
+            | Opcode::EXTCODECOPY
+            | Opcode::RETURNDATASIZE
+            | Opcode::RETURNDATACOPY
+            | Opcode::EXTCODEHASH
+            | Opcode::BLOCKHASH
+            | Opcode::COINBASE
+            | Opcode::TIMESTAMP
+            | Opcode::NUMBER
+            | Opcode::DIFFICULTY
+            | Opcode::GASLIMIT
+            | Opcode::CHAINID
+            | Opcode::SELFBALANCE => unimplemented!(),
             Opcode::POP => {
                 comment!("opPOP");
                 stack.pop();
@@ -647,7 +678,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 stack.push(result);
                 //
                 pc += 1;
-            },
+            }
             Opcode::MSTORE => {
                 comment!("opMSTORE");
                 let offset = stack.pop_u256();
@@ -656,7 +687,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 memory.write(offset.low_u64() as usize, value);
                 //
                 pc += 1;
-            },
+            }
             Opcode::MSTORE8 => {
                 comment!("opMSTORE8");
                 let offset = stack.pop_u256();
@@ -665,7 +696,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 memory.write_byte(offset.low_u64() as usize, value as u8);
                 //
                 pc += 1;
-            },
+            }
             Opcode::SLOAD | Opcode::SSTORE => unimplemented!(),
             Opcode::JUMP => {
                 comment!("opJUMP");
@@ -676,8 +707,7 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                     pc = low as usize + 1;
                     check_exception_at!(low, gas, rom, stack, error);
                     break;
-                }
-                else {
+                } else {
                     error = VmError::InvalidJumpDest;
                     break;
                 }
@@ -690,16 +720,14 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                     pc += 1;
                     check_exception_at!(pc as u64, gas, rom, stack, error);
                     break;
-                }
-                else {
+                } else {
                     let in_bounds = is_ltpow2_u256(addr, VmRom::MAX_CODESIZE);
                     let low = addr.low_u64();
                     if in_bounds & rom.is_jumpdest(low) {
                         pc = low as usize + 1;
                         check_exception_at!(low, gas, rom, stack, error);
                         break;
-                    }
-                    else {
+                    } else {
                         error = VmError::InvalidJumpDest;
                         break;
                     }
@@ -758,8 +786,19 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 5;
             }
-            Opcode::PUSH3 | Opcode::PUSH5 | Opcode::PUSH6 | Opcode::PUSH7 | Opcode::PUSH8 | Opcode::PUSH9 | Opcode::PUSH10 | Opcode::PUSH11 |
-            Opcode::PUSH12 | Opcode::PUSH13 | Opcode::PUSH14 | Opcode::PUSH15 | Opcode::PUSH16 => {
+            Opcode::PUSH3
+            | Opcode::PUSH5
+            | Opcode::PUSH6
+            | Opcode::PUSH7
+            | Opcode::PUSH8
+            | Opcode::PUSH9
+            | Opcode::PUSH10
+            | Opcode::PUSH11
+            | Opcode::PUSH12
+            | Opcode::PUSH13
+            | Opcode::PUSH14
+            | Opcode::PUSH15
+            | Opcode::PUSH16 => {
                 comment!("opPUSH16");
                 let num_bytes = (opcode.push_index() as i32) + 1;
                 let result = load16_u256(code.offset(pc as isize + 1) as *const U256, num_bytes);
@@ -767,9 +806,22 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1 + num_bytes as usize;
             }
-            Opcode::PUSH17 | Opcode::PUSH18 | Opcode::PUSH19 | Opcode::PUSH20 | Opcode::PUSH21 | Opcode::PUSH22 | Opcode::PUSH23 |
-            Opcode::PUSH24 | Opcode::PUSH25 | Opcode::PUSH26 | Opcode::PUSH27 | Opcode::PUSH28 | Opcode::PUSH29 | Opcode::PUSH30 |
-            Opcode::PUSH31 | Opcode::PUSH32 => {
+            Opcode::PUSH17
+            | Opcode::PUSH18
+            | Opcode::PUSH19
+            | Opcode::PUSH20
+            | Opcode::PUSH21
+            | Opcode::PUSH22
+            | Opcode::PUSH23
+            | Opcode::PUSH24
+            | Opcode::PUSH25
+            | Opcode::PUSH26
+            | Opcode::PUSH27
+            | Opcode::PUSH28
+            | Opcode::PUSH29
+            | Opcode::PUSH30
+            | Opcode::PUSH31
+            | Opcode::PUSH32 => {
                 comment!("opPUSH32");
                 let num_bytes = (opcode.push_index() as i32) + 1;
                 let result = load32_u256(code.offset(pc as isize + 1) as *const U256, num_bytes);
@@ -791,8 +843,20 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             }
-            Opcode::DUP3 | Opcode::DUP4 | Opcode::DUP5 | Opcode::DUP6 | Opcode::DUP7 | Opcode::DUP8 | Opcode::DUP9 | Opcode::DUP10 | Opcode::DUP11 |
-            Opcode::DUP12 | Opcode::DUP13 | Opcode::DUP14 | Opcode::DUP15 | Opcode::DUP16 => {
+            Opcode::DUP3
+            | Opcode::DUP4
+            | Opcode::DUP5
+            | Opcode::DUP6
+            | Opcode::DUP7
+            | Opcode::DUP8
+            | Opcode::DUP9
+            | Opcode::DUP10
+            | Opcode::DUP11
+            | Opcode::DUP12
+            | Opcode::DUP13
+            | Opcode::DUP14
+            | Opcode::DUP15
+            | Opcode::DUP16 => {
                 comment!("opDUPn");
                 let index = opcode.dup_index();
                 let result = stack.peekn(index);
@@ -818,8 +882,20 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             }
-            Opcode::SWAP3 | Opcode::SWAP4 | Opcode::SWAP5 | Opcode::SWAP6 | Opcode::SWAP7 | Opcode::SWAP8 | Opcode::SWAP9 | Opcode::SWAP10 |
-            Opcode::SWAP11 | Opcode::SWAP12 | Opcode::SWAP13 | Opcode::SWAP14 | Opcode::SWAP15 | Opcode::SWAP16 => {
+            Opcode::SWAP3
+            | Opcode::SWAP4
+            | Opcode::SWAP5
+            | Opcode::SWAP6
+            | Opcode::SWAP7
+            | Opcode::SWAP8
+            | Opcode::SWAP9
+            | Opcode::SWAP10
+            | Opcode::SWAP11
+            | Opcode::SWAP12
+            | Opcode::SWAP13
+            | Opcode::SWAP14
+            | Opcode::SWAP15
+            | Opcode::SWAP16 => {
                 comment!("opSWAPn");
                 let value = stack.peek();
                 let index = opcode.swap_index();
@@ -829,16 +905,25 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
                 //
                 pc += 1;
             }
-            Opcode::LOG0 | Opcode::LOG1 | Opcode::LOG2 | Opcode::LOG3 | Opcode::LOG4 | Opcode::CREATE | Opcode::CALL | Opcode::CALLCODE => unimplemented!(),
+            Opcode::LOG0
+            | Opcode::LOG1
+            | Opcode::LOG2
+            | Opcode::LOG3
+            | Opcode::LOG4
+            | Opcode::CREATE
+            | Opcode::CALL
+            | Opcode::CALLCODE => unimplemented!(),
             Opcode::RETURN => {
                 lldb_hook!(pc, gas, stack, memory, lldb_hook_stop);
                 comment!("opRETURN");
                 let offset = stack.pop_u256();
                 let size = stack.pop_u256();
                 extend_memory!(offset, size, schedule, memory, gas, error);
-                return ReturnData::ok(offset.low_u64() as usize, size.low_u64() as usize, gas)
+                return ReturnData::ok(offset.low_u64() as usize, size.low_u64() as usize, gas);
             }
-            Opcode::DELEGATECALL | Opcode::CREATE2 | Opcode::STATICCALL | Opcode::REVERT => unimplemented!(),
+            Opcode::DELEGATECALL | Opcode::CREATE2 | Opcode::STATICCALL | Opcode::REVERT => {
+                unimplemented!()
+            }
             Opcode::INVALID => {
                 error = VmError::InvalidInstruction;
                 break;
@@ -859,8 +944,7 @@ impl BbInfo {
     fn new(stack_min_size: u16, stack_max_size: u16, gas: u64) -> BbInfo {
         let stack_rel_max_size = if stack_max_size > stack_min_size {
             stack_max_size - stack_min_size
-        }
-        else {
+        } else {
             0
         };
         BbInfo {
@@ -872,7 +956,7 @@ impl BbInfo {
 }
 
 pub struct VmRom {
-    data: [u8; VmRom::SIZE]
+    data: [u8; VmRom::SIZE],
 }
 
 impl VmRom {
@@ -885,7 +969,9 @@ impl VmRom {
     const BB_INFOS_OFFSET: usize = VmRom::MAX_CODESIZE + VmRom::JUMPDESTS_SIZE;
 
     pub fn new() -> VmRom {
-        VmRom { data: [0; VmRom::SIZE] }
+        VmRom {
+            data: [0; VmRom::SIZE],
+        }
     }
 
     fn code(&self) -> *const u8 {
@@ -893,9 +979,8 @@ impl VmRom {
     }
 
     fn is_jumpdest(&self, addr: u64) -> bool {
-        let jump_dests = unsafe {
-            self.data.as_ptr().offset(VmRom::MAX_CODESIZE as isize) as *mut u64
-        };
+        let jump_dests =
+            unsafe { self.data.as_ptr().offset(VmRom::MAX_CODESIZE as isize) as *mut u64 };
         let offset = (addr % (VmRom::MAX_CODESIZE as u64)) as isize;
         let bits = unsafe { *jump_dests.offset(offset / 64) };
         let mask = 1u64 << (offset % 64);
@@ -910,9 +995,9 @@ impl VmRom {
         }
     }
 
-    fn swap_bytes(input: &[u8], swapped: &mut[u8]) {
+    fn swap_bytes(input: &[u8], swapped: &mut [u8]) {
         for i in 0..input.len() {
-            swapped[input.len()-1-i] = input[i];
+            swapped[input.len() - 1 - i] = input[i];
         }
     }
 
@@ -928,7 +1013,13 @@ impl VmRom {
             is_basic_block: bool,
         }
         impl BlockInfo {
-            fn basic(addr: u32, stack_min_size: u16, stack_max_size: u16, stack_end_size: u16, gas: u64) -> BlockInfo {
+            fn basic(
+                addr: u32,
+                stack_min_size: u16,
+                stack_max_size: u16,
+                stack_end_size: u16,
+                gas: u64,
+            ) -> BlockInfo {
                 BlockInfo {
                     addr,
                     stack_min_size,
@@ -938,7 +1029,13 @@ impl VmRom {
                     is_basic_block: true,
                 }
             }
-            fn partial(addr: u32, stack_min_size: u16, stack_max_size: u16, stack_end_size: u16, gas: u64) -> BlockInfo {
+            fn partial(
+                addr: u32,
+                stack_min_size: u16,
+                stack_max_size: u16,
+                stack_end_size: u16,
+                gas: u64,
+            ) -> BlockInfo {
                 BlockInfo {
                     addr,
                     stack_min_size,
@@ -949,7 +1046,264 @@ impl VmRom {
                 }
             }
         }
-        const OPCODE_INFOS: [(Fee, u16, u16); 256] = [(Zero, 0, 0), (VeryLow, 2, 1), (Low, 2, 1), (VeryLow, 2, 1), (Low, 2, 1), (Low, 2, 1), (Low, 2, 1), (Low, 2, 1), (Mid, 3, 1), (Mid, 3, 1), (Exp, 2, 1), (Low, 2, 1), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (VeryLow, 2, 1), (VeryLow, 2, 1), (VeryLow, 2, 1), (VeryLow, 2, 1), (VeryLow, 2, 1), (VeryLow, 1, 1), (VeryLow, 2, 1), (VeryLow, 2, 1), (VeryLow, 2, 1), (VeryLow, 1, 1), (VeryLow, 2, 1), (VeryLow, 2, 1), (VeryLow, 2, 1), (VeryLow, 2, 1), (Zero, 0, 0), (Zero, 0, 0), (Sha3, 2, 1), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Base, 0, 1), (Balance, 1, 1), (Base, 0, 1), (Base, 0, 1), (Base, 0, 1), (VeryLow, 1, 1), (Base, 0, 1), (Copy, 3, 0), (Base, 0, 1), (Copy, 3, 0), (Base, 0, 1), (Zero, 1, 1), (Zero, 4, 0), (Base, 0, 1), (Copy, 3, 0), (Zero, 1, 1), (Blockhash, 1, 1), (Base, 0, 1), (Base, 0, 1), (Base, 0, 1), (Base, 0, 1), (Base, 0, 1), (Base, 0, 1), (Low, 0, 1), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Base, 1, 0), (VeryLow, 1, 1), (VeryLow, 2, 0), (VeryLow, 2, 0), (Zero, 1, 1), (Zero, 2, 0), (Mid, 1, 0), (High, 2, 0), (Base, 0, 1), (Base, 0, 1), (Base, 0, 1), (Jumpdest, 0, 0), (Base, 0, 0), (Low, 0, 0), (High, 1, 0), (Zero, 0, 0), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 0, 1), (VeryLow, 1, 2), (VeryLow, 2, 3), (VeryLow, 3, 4), (VeryLow, 4, 5), (VeryLow, 5, 6), (VeryLow, 6, 7), (VeryLow, 7, 8), (VeryLow, 8, 9), (VeryLow, 9, 10), (VeryLow, 10, 11), (VeryLow, 11, 12), (VeryLow, 12, 13), (VeryLow, 13, 14), (VeryLow, 14, 15), (VeryLow, 15, 16), (VeryLow, 16, 17), (VeryLow, 2, 2), (VeryLow, 3, 3), (VeryLow, 4, 4), (VeryLow, 5, 5), (VeryLow, 6, 6), (VeryLow, 7, 7), (VeryLow, 8, 8), (VeryLow, 9, 9), (VeryLow, 10, 10), (VeryLow, 11, 11), (VeryLow, 12, 12), (VeryLow, 13, 13), (VeryLow, 14, 14), (VeryLow, 15, 15), (VeryLow, 16, 16), (VeryLow, 17, 17), (Zero, 2, 0), (Zero, 3, 0), (Zero, 4, 0), (Zero, 5, 0), (Zero, 6, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 3, 1), (Zero, 7, 1), (Zero, 7, 1), (Zero, 2, 0), (Zero, 6, 1), (Zero, 4, 1), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 0, 0), (Zero, 6, 1), (Zero, 0, 0), (Zero, 0, 0), (Zero, 2, 0), (Zero, 0, 0), (Zero, 1, 0)];
+        const OPCODE_INFOS: [(Fee, u16, u16); 256] = [
+            (Zero, 0, 0),
+            (VeryLow, 2, 1),
+            (Low, 2, 1),
+            (VeryLow, 2, 1),
+            (Low, 2, 1),
+            (Low, 2, 1),
+            (Low, 2, 1),
+            (Low, 2, 1),
+            (Mid, 3, 1),
+            (Mid, 3, 1),
+            (Exp, 2, 1),
+            (Low, 2, 1),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (VeryLow, 2, 1),
+            (VeryLow, 2, 1),
+            (VeryLow, 2, 1),
+            (VeryLow, 2, 1),
+            (VeryLow, 2, 1),
+            (VeryLow, 1, 1),
+            (VeryLow, 2, 1),
+            (VeryLow, 2, 1),
+            (VeryLow, 2, 1),
+            (VeryLow, 1, 1),
+            (VeryLow, 2, 1),
+            (VeryLow, 2, 1),
+            (VeryLow, 2, 1),
+            (VeryLow, 2, 1),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Sha3, 2, 1),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Base, 0, 1),
+            (Balance, 1, 1),
+            (Base, 0, 1),
+            (Base, 0, 1),
+            (Base, 0, 1),
+            (VeryLow, 1, 1),
+            (Base, 0, 1),
+            (Copy, 3, 0),
+            (Base, 0, 1),
+            (Copy, 3, 0),
+            (Base, 0, 1),
+            (Zero, 1, 1),
+            (Zero, 4, 0),
+            (Base, 0, 1),
+            (Copy, 3, 0),
+            (Zero, 1, 1),
+            (Blockhash, 1, 1),
+            (Base, 0, 1),
+            (Base, 0, 1),
+            (Base, 0, 1),
+            (Base, 0, 1),
+            (Base, 0, 1),
+            (Base, 0, 1),
+            (Low, 0, 1),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Base, 1, 0),
+            (VeryLow, 1, 1),
+            (VeryLow, 2, 0),
+            (VeryLow, 2, 0),
+            (Zero, 1, 1),
+            (Zero, 2, 0),
+            (Mid, 1, 0),
+            (High, 2, 0),
+            (Base, 0, 1),
+            (Base, 0, 1),
+            (Base, 0, 1),
+            (Jumpdest, 0, 0),
+            (Base, 0, 0),
+            (Low, 0, 0),
+            (High, 1, 0),
+            (Zero, 0, 0),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 0, 1),
+            (VeryLow, 1, 2),
+            (VeryLow, 2, 3),
+            (VeryLow, 3, 4),
+            (VeryLow, 4, 5),
+            (VeryLow, 5, 6),
+            (VeryLow, 6, 7),
+            (VeryLow, 7, 8),
+            (VeryLow, 8, 9),
+            (VeryLow, 9, 10),
+            (VeryLow, 10, 11),
+            (VeryLow, 11, 12),
+            (VeryLow, 12, 13),
+            (VeryLow, 13, 14),
+            (VeryLow, 14, 15),
+            (VeryLow, 15, 16),
+            (VeryLow, 16, 17),
+            (VeryLow, 2, 2),
+            (VeryLow, 3, 3),
+            (VeryLow, 4, 4),
+            (VeryLow, 5, 5),
+            (VeryLow, 6, 6),
+            (VeryLow, 7, 7),
+            (VeryLow, 8, 8),
+            (VeryLow, 9, 9),
+            (VeryLow, 10, 10),
+            (VeryLow, 11, 11),
+            (VeryLow, 12, 12),
+            (VeryLow, 13, 13),
+            (VeryLow, 14, 14),
+            (VeryLow, 15, 15),
+            (VeryLow, 16, 16),
+            (VeryLow, 17, 17),
+            (Zero, 2, 0),
+            (Zero, 3, 0),
+            (Zero, 4, 0),
+            (Zero, 5, 0),
+            (Zero, 6, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 3, 1),
+            (Zero, 7, 1),
+            (Zero, 7, 1),
+            (Zero, 2, 0),
+            (Zero, 6, 1),
+            (Zero, 4, 1),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 6, 1),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 2, 0),
+            (Zero, 0, 0),
+            (Zero, 1, 0),
+        ];
         let mut addr: u32 = 0;
         let mut stack_size: u16 = 0;
         let mut stack_min_size: u16 = 0;
@@ -960,19 +1314,17 @@ impl VmRom {
         let mut i: usize = 0;
         while i < bytecode.len() {
             let code = bytecode[i];
-            let opcode = unsafe {
-                std::mem::transmute::<u8, EvmOpcode>(code)
-            };
+            let opcode = unsafe { std::mem::transmute::<u8, EvmOpcode>(code) };
             let (fee, delta, alpha) = OPCODE_INFOS[code as usize];
             // new_stack_size is (stack_size + needed + alpha) - delta
             // and represents the new stack size after the opcode has been
             // dispatched
             let (new_stack_size, needed) = if delta > stack_size {
-                    (alpha, (delta - stack_size))
-                } else {
-                    // case stack_size >= delta
-                    ((stack_size - delta).saturating_add(alpha), 0)
-                };
+                (alpha, (delta - stack_size))
+            } else {
+                // case stack_size >= delta
+                ((stack_size - delta).saturating_add(alpha), 0)
+            };
             stack_size = new_stack_size;
             stack_min_size = stack_min_size.saturating_add(needed);
             stack_max_size = max(stack_max_size, new_stack_size);
@@ -981,29 +1333,33 @@ impl VmRom {
             if opcode.is_push() {
                 let num_bytes = opcode.push_index() + 1;
                 i += 1 + num_bytes;
-            }
-            else {
+            } else {
                 i += 1;
             }
             if opcode.is_terminator() || i >= bytecode.len() {
                 block_infos.push(BlockInfo::basic(
-                    addr, stack_min_size, stack_max_size, stack_size, gas)
-                );
+                    addr,
+                    stack_min_size,
+                    stack_max_size,
+                    stack_size,
+                    gas,
+                ));
                 addr = i as u32;
                 stack_size = 0;
                 stack_min_size = 0;
                 stack_max_size = 0;
                 gas = 0;
-            }
-            else {
+            } else {
                 let code = bytecode[i];
-                let opcode = unsafe {
-                    std::mem::transmute::<u8, EvmOpcode>(code)
-                };
+                let opcode = unsafe { std::mem::transmute::<u8, EvmOpcode>(code) };
                 if opcode == EvmOpcode::JUMPDEST {
                     block_infos.push(BlockInfo::partial(
-                        addr, stack_min_size, stack_max_size, stack_size, gas)
-                    );
+                        addr,
+                        stack_min_size,
+                        stack_max_size,
+                        stack_size,
+                        gas,
+                    ));
                     addr = i as u32;
                     stack_size = 0;
                     stack_min_size = 0;
@@ -1022,8 +1378,7 @@ impl VmRom {
                 stack_min_size = info.stack_min_size;
                 stack_max_size = info.stack_max_size;
                 gas = info.gas;
-            }
-            else {
+            } else {
                 let (more, needed) = if stack_min_size > info.stack_end_size {
                     (0, (stack_min_size - info.stack_end_size))
                 } else {
@@ -1033,7 +1388,7 @@ impl VmRom {
                 stack_min_size = info.stack_min_size.saturating_add(needed);
                 stack_max_size = max(
                     info.stack_max_size.saturating_add(needed),
-                    stack_max_size.saturating_add(more)
+                    stack_max_size.saturating_add(more),
                 );
                 gas += info.gas;
             }
@@ -1059,9 +1414,7 @@ impl VmRom {
             let mut i: usize = 0;
             while i < bytecode.len() {
                 let code = bytecode[i];
-                let opcode = unsafe {
-                    std::mem::transmute::<u8, EvmOpcode>(code)
-                };
+                let opcode = unsafe { std::mem::transmute::<u8, EvmOpcode>(code) };
                 self.data[i] = opcode.to_internal() as u8;
                 if opcode.is_push() {
                     let num_bytes = opcode.push_index() + 1;
@@ -1070,8 +1423,7 @@ impl VmRom {
                     let dest = &mut self.data[start..end];
                     VmRom::swap_bytes(&bytecode[start..end], dest);
                     i += 1 + num_bytes;
-                }
-                else {
+                } else {
                     i += 1;
                 }
             }
@@ -1082,23 +1434,18 @@ impl VmRom {
         }
         // write valid jump destinations
         let jump_dests_offset = VmRom::MAX_CODESIZE as isize;
-        let jump_dests = unsafe {
-            self.data.as_mut_ptr().offset(jump_dests_offset) as *mut u64
-        };
+        let jump_dests = unsafe { self.data.as_mut_ptr().offset(jump_dests_offset) as *mut u64 };
         let mut bits: u64 = 0;
         let mut i: usize = 0;
         while i < bytecode.len() {
             // save i for later in j
             let j = i;
             let code = bytecode[i];
-            let opcode = unsafe {
-                std::mem::transmute::<u8, EvmOpcode>(code)
-            };
+            let opcode = unsafe { std::mem::transmute::<u8, EvmOpcode>(code) };
             if opcode.is_push() {
                 let num_bytes = opcode.push_index() + 1;
                 i += 1 + num_bytes;
-            }
-            else {
+            } else {
                 if opcode == EvmOpcode::JUMPDEST {
                     bits |= 1u64 << (i % 64);
                 }
@@ -1107,16 +1454,12 @@ impl VmRom {
             let do_write = (j % 64) > (i % 64);
             if do_write {
                 let offset = (j / 64) as isize;
-                unsafe {
-                    *jump_dests.offset(offset) = bits
-                }
+                unsafe { *jump_dests.offset(offset) = bits }
                 bits = 0;
             }
         }
         let offset = (i / 64) as isize;
-        unsafe {
-            *jump_dests.offset(offset) = bits
-        }
+        unsafe { *jump_dests.offset(offset) = bits }
         //
         self.write_bb_infos(bytecode, schedule);
     }

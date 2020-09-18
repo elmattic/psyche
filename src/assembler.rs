@@ -17,12 +17,12 @@
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take_until, take_while1};
 use nom::character::complete::{
-    alpha1, alphanumeric1, char, digit1, oct_digit1, hex_digit1, multispace0,
-    newline, not_line_ending,
+    alpha1, alphanumeric1, char, digit1, hex_digit1, multispace0, newline, not_line_ending,
+    oct_digit1,
 };
 use nom::combinator::{map, not, opt, recognize, value};
 use nom::multi::{many0, many0_count, many1, separated_list};
-use nom::sequence::{delimited, pair, tuple, preceded, terminated};
+use nom::sequence::{delimited, pair, preceded, terminated, tuple};
 use nom::IResult;
 use num_bigint::BigUint;
 use std::collections::{BTreeMap, HashMap};
@@ -142,7 +142,10 @@ impl Program {
     }
 
     fn with_blocks(blocks: BlockVec) -> Program {
-        Program { macros: vec![], blocks }
+        Program {
+            macros: vec![],
+            blocks,
+        }
     }
 }
 
@@ -181,7 +184,13 @@ impl Display for ErrorCode {
             ErrorCode::UndefinedSymbol(s) => write!(f, "undefined symbol `{}`", s.0),
             ErrorCode::InvalidParse(s) => write!(f, "invalid parse at `{}`", s),
             ErrorCode::InvalidMacroCallArity(s, params, args) => {
-                let plural = |x: usize, a: &str, b: &str| if x > 1 { String::from(a) } else { String::from(b) };
+                let plural = |x: usize, a: &str, b: &str| {
+                    if x > 1 {
+                        String::from(a)
+                    } else {
+                        String::from(b)
+                    }
+                };
                 write!(f, "too {} arguments to macro call `{}`, expected {} argument{}, have {} argument{}", 
                     if params < args { "many" } else { "few" },
                     s.0,
@@ -190,10 +199,8 @@ impl Display for ErrorCode {
                     args,
                     plural(*args, "s", "")
                 )
-            },
-            ErrorCode::UndefinedParameter(s) => {
-                write!(f, "undefined macro parameter `${}`", s.0)
             }
+            ErrorCode::UndefinedParameter(s) => write!(f, "undefined macro parameter `${}`", s.0),
         }
     }
 }
@@ -216,13 +223,11 @@ fn underscore(i: &str) -> IResult<&str, &str> {
 
 fn symbol(i: &str) -> IResult<&str, Symbol> {
     map(
-        recognize(
-            pair(
-                alt((underscore, alpha1)),
-                many0_count(preceded(opt(underscore), alphanumeric1)),
-            )
-        ),
-        |x| Symbol::new(x)
+        recognize(pair(
+            alt((underscore, alpha1)),
+            many0_count(preceded(opt(underscore), alphanumeric1)),
+        )),
+        |x| Symbol::new(x),
     )(i)
 }
 
@@ -236,8 +241,8 @@ fn macro_parameters(i: &str) -> IResult<&str, Vec<Symbol>> {
         delimited(
             char('('),
             separated_list(delimited(blank, char(','), blank), parameter),
-            char(')')
-        )
+            char(')'),
+        ),
     )(i)
 }
 
@@ -247,8 +252,8 @@ fn macro_arguments(i: &str) -> IResult<&str, Vec<BlockVec>> {
         delimited(
             char('('),
             separated_list(delimited(blank, char(','), blank), many1(block)),
-            char(')')
-        )
+            char(')'),
+        ),
     )(i)
 }
 
@@ -258,11 +263,8 @@ fn macro_identifier(i: &str) -> IResult<&str, Symbol> {
 
 fn macro_call(i: &str) -> IResult<&str, MacroCall> {
     map(
-        pair(
-            macro_identifier,
-            opt(macro_arguments)
-        ),
-        |(id, args)| MacroCall::new(id, args)
+        pair(macro_identifier, opt(macro_arguments)),
+        |(id, args)| MacroCall::new(id, args),
     )(i)
 }
 
@@ -277,13 +279,16 @@ fn decode_hex_str(s: &str) -> Vec<u8> {
         result.push(u8::from_str_radix(&s[0..1], 16).unwrap());
     }
     for i in (index..s.len()).step_by(2) {
-        result.push(u8::from_str_radix(&s[i..(i+2)], 16).unwrap());
+        result.push(u8::from_str_radix(&s[i..(i + 2)], 16).unwrap());
     }
     result
 }
 
 fn raw_bytes(i: &str) -> IResult<&str, Vec<u8>> {
-    map(preceded(preceded(blank, tag("0x")), hex_digit1), decode_hex_str)(i)
+    map(
+        preceded(preceded(blank, tag("0x")), hex_digit1),
+        decode_hex_str,
+    )(i)
 }
 
 fn encode_radix(s: &str, radix: u32) -> Vec<u8> {
@@ -315,12 +320,7 @@ fn decimal_lit(i: &str) -> IResult<&str, Vec<u8>> {
 }
 
 fn literal(i: &str) -> IResult<&str, Vec<u8>> {
-    alt((
-        hexadecimal_lit,
-        octal_lit,
-        binary_lit,
-        decimal_lit,
-    ))(i)
+    alt((hexadecimal_lit, octal_lit, binary_lit, decimal_lit))(i)
 }
 
 fn directive(i: &str) -> IResult<&str, Directive> {
@@ -331,7 +331,7 @@ fn directive(i: &str) -> IResult<&str, Directive> {
             map(literal, Directive::Bytes),
             map(macro_call, Directive::Call),
             map(macro_variable, Directive::Var),
-        ))
+        )),
     )(i)
 }
 
@@ -342,23 +342,16 @@ fn one_liner(i: &str) -> IResult<&str, Program> {
 }
 
 fn macro_body(i: &str) -> IResult<&str, Program> {
-    alt((
-        terminated(program, preceded(blank, tag("%end"))),
-        one_liner
-    ))(i)
+    alt((terminated(program, preceded(blank, tag("%end"))), one_liner))(i)
 }
 
 fn macro_definition(i: &str) -> IResult<&str, MacroDefinition> {
     map(
         preceded(
             tag("%define"),
-            tuple((
-                preceded(blank, symbol),
-                opt(macro_parameters),
-                macro_body,
-            ))
+            tuple((preceded(blank, symbol), opt(macro_parameters), macro_body)),
         ),
-        |(name, params, body)| MacroDefinition::new(name, params, body)
+        |(name, params, body)| MacroDefinition::new(name, params, body),
     )(i)
 }
 
@@ -383,13 +376,8 @@ fn block(i: &str) -> IResult<&str, Block> {
 
 fn program(i: &str) -> IResult<&str, Program> {
     map(
-        pair(
-            macro_definitions,
-            terminated(many1(block), blank)
-        ),
-        |(macros, blocks)| {
-            Program::new(macros, blocks)
-        },
+        pair(macro_definitions, terminated(many1(block), blank)),
+        |(macros, blocks)| Program::new(macros, blocks),
     )(i)
 }
 
@@ -398,23 +386,19 @@ fn parse(i: &str) -> Result<Program, Error> {
         Ok((i, program)) => {
             if i.is_empty() {
                 Ok(program)
-            }
-            else {
+            } else {
                 Err(Error::syntax(ErrorCode::InvalidParse(i.to_string())))
             }
-        },
-        Err(_) => {
-            Err(Error::syntax(ErrorCode::InvalidParse(i.to_string())))
         }
+        Err(_) => Err(Error::syntax(ErrorCode::InvalidParse(i.to_string()))),
     }
 }
 
 fn build_opcodes() -> String {
-    EvmOpcode::iter().map(|x| {
-        format!("%define {}() {:#02x}", x, *x as u8)
-    })
-    .collect::<Vec<_>>()
-    .join("\n")
+    EvmOpcode::iter()
+        .map(|x| format!("%define {}() {:#02x}", x, *x as u8))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn build_argument_map(
@@ -432,14 +416,26 @@ fn build_argument_map(
                     }
                     Ok(Some(map))
                 } else {
-                    Err(Error::syntax(ErrorCode::InvalidMacroCallArity(macro_name.clone(), params.len(), args.len())))
+                    Err(Error::syntax(ErrorCode::InvalidMacroCallArity(
+                        macro_name.clone(),
+                        params.len(),
+                        args.len(),
+                    )))
                 }
             }
-            None => Err(Error::syntax(ErrorCode::InvalidMacroCallArity(macro_name.clone(), params.len(), 0)))
+            None => Err(Error::syntax(ErrorCode::InvalidMacroCallArity(
+                macro_name.clone(),
+                params.len(),
+                0,
+            ))),
         },
         None => match args {
             None => Ok(None),
-            Some(args) => Err(Error::syntax(ErrorCode::InvalidMacroCallArity(macro_name.clone(), 0, args.len())))
+            Some(args) => Err(Error::syntax(ErrorCode::InvalidMacroCallArity(
+                macro_name.clone(),
+                0,
+                args.len(),
+            ))),
         },
     }
 }
@@ -448,7 +444,7 @@ fn invoke_macros(
     block: &Block,
     macros: &Vec<MacroDefinition>,
     arg_map: &Option<MacroArgumentMap>,
-    mut new_blocks: BlockVec
+    mut new_blocks: BlockVec,
 ) -> Result<BlockVec, Error> {
     let macro_map: HashMap<_, _> = macros.iter().map(|m| (&m.name, m)).collect();
     if let Some(l) = &block.label {
@@ -460,17 +456,21 @@ fn invoke_macros(
             new_blocks.push(Block::default());
         }
     }
-    
+
     // this is now safe to unwrap last elements of new_blocks
-    block.directives.iter().fold(Ok(new_blocks), |result: Result<BlockVec, Error>, d| {
-        result.and_then(|mut new_blocks| {
-            match d {
+    block
+        .directives
+        .iter()
+        .fold(Ok(new_blocks), |result: Result<BlockVec, Error>, d| {
+            result.and_then(|mut new_blocks| match d {
                 Directive::Call(call) => match macro_map.get(&call.name) {
                     Some(def) => {
                         build_argument_map(&call.name, &def.params, &call.args).and_then(|map| {
                             let blocks = &def.body.blocks;
                             blocks.iter().fold(Ok(new_blocks), |result, b| {
-                                result.and_then(|new_blocks| invoke_macros(&b, &macros, &map, new_blocks))
+                                result.and_then(|new_blocks| {
+                                    invoke_macros(&b, &macros, &map, new_blocks)
+                                })
                             })
                         })
                     }
@@ -491,31 +491,32 @@ fn invoke_macros(
                         .push(Directive::Bytes(b.to_vec()));
                     Ok(new_blocks)
                 }
-                Directive::Var(s) => {
-                    match arg_map {
-                        Some(map) => {
-                            map.get(s).map_or(Err(Error::syntax(ErrorCode::UndefinedParameter(s.clone()))), |blocks| {
-                                blocks.iter().fold(Ok(new_blocks), |result, b| {
-                                    result.and_then(|new_blocks| invoke_macros(&b, &macros, &None, new_blocks))
+                Directive::Var(s) => match arg_map {
+                    Some(map) => map.get(s).map_or(
+                        Err(Error::syntax(ErrorCode::UndefinedParameter(s.clone()))),
+                        |blocks| {
+                            blocks.iter().fold(Ok(new_blocks), |result, b| {
+                                result.and_then(|new_blocks| {
+                                    invoke_macros(&b, &macros, &None, new_blocks)
                                 })
                             })
-                        }
-                        None => {
-                            Err(Error::syntax(ErrorCode::UndefinedParameter(s.clone())))
-                        }
-                    }
+                        },
+                    ),
+                    None => Err(Error::syntax(ErrorCode::UndefinedParameter(s.clone()))),
                 },
                 Directive::Label(_) => unreachable!(),
-            }
+            })
         })
-    })
 }
 
 fn expand_macros(program: Program) -> Result<Program, Error> {
-    program.blocks.iter().fold(Ok(vec![]), |result, b| {
-        result.and_then(|new_blocks| invoke_macros(&b, &program.macros, &None, new_blocks))
-    })
-    .and_then(|blocks| Ok(Program::with_blocks(blocks)))
+    program
+        .blocks
+        .iter()
+        .fold(Ok(vec![]), |result, b| {
+            result.and_then(|new_blocks| invoke_macros(&b, &program.macros, &None, new_blocks))
+        })
+        .and_then(|blocks| Ok(Program::with_blocks(blocks)))
 }
 
 fn build_block_addresses(blocks: &BlockVec) -> Vec<usize> {
@@ -550,16 +551,18 @@ fn build_label_addresses(blocks: &BlockVec) -> AddressMap {
                 None => None,
             })
             .map(|(i, b)| {
-                const BITMASK: usize = usize::max_value() >> ((size_of::<usize>()-ADDRESS_SIZE) * 8);
+                const BITMASK: usize =
+                    usize::max_value() >> ((size_of::<usize>() - ADDRESS_SIZE) * 8);
                 let address = addresses[i];
                 if (address & !BITMASK) > 0 {
-                    panic!("address too large to fit on {} byte{}",
+                    panic!(
+                        "address too large to fit on {} byte{}",
                         ADDRESS_SIZE,
                         if ADDRESS_SIZE > 1 { "s" } else { "" }
                     );
                 }
                 let bytes = address.to_be_bytes();
-                let code = EvmOpcode::PUSH1 as u8 + (ADDRESS_SIZE-1) as u8;
+                let code = EvmOpcode::PUSH1 as u8 + (ADDRESS_SIZE - 1) as u8;
                 let mut instr: Vec<u8> = vec![code];
                 instr.extend_from_slice(&bytes[bytes.len() - ADDRESS_SIZE..]);
                 (b.label.unwrap(), instr)

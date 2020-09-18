@@ -18,9 +18,9 @@
 mod tests {
     use psyche::assembler;
     use psyche::schedule::Schedule;
-    use psyche::utils;
     use psyche::u256::U256;
-    use psyche::vm::{VmMemory, VmRom, run_evm};
+    use psyche::utils;
+    use psyche::vm::{run_evm, VmMemory, VmRom};
 
     const TEST_GAS: u64 = 20_000_000_000_000;
 
@@ -35,7 +35,9 @@ mod tests {
         memory.init(gas_limit);
         let word = unsafe {
             let ret_data = run_evm(&bytes, &rom, &schedule, gas_limit, &mut memory);
-            memory.slice(ret_data.offset as isize, ret_data.size).to_vec()
+            memory
+                .slice(ret_data.offset as isize, ret_data.size)
+                .to_vec()
         };
         let ref_word = utils::decode_hex(expected).unwrap();
         assert_eq!(word, ref_word);
@@ -43,7 +45,8 @@ mod tests {
 
     #[test]
     fn opcode_add_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             PUSH1 0x01
             ADD
@@ -56,7 +59,8 @@ mod tests {
 
     #[test]
     fn opcode_add_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             PUSH1 0x00
             ADD
@@ -69,7 +73,8 @@ mod tests {
 
     #[test]
     fn opcode_add_2() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000001
             PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             ADD
@@ -82,7 +87,8 @@ mod tests {
 
     #[test]
     fn opcode_mul_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             PUSH1 0x00
             MUL
@@ -95,7 +101,8 @@ mod tests {
 
     #[test]
     fn opcode_mul_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             PUSH1 0x01
             MUL
@@ -108,7 +115,8 @@ mod tests {
 
     #[test]
     fn opcode_mul_2() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             PUSH1 0x01
             MUL
@@ -121,7 +129,8 @@ mod tests {
 
     #[test]
     fn opcode_mul_3() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             PUSH17 0x0100000000000000000000000000000000
             MUL
@@ -134,7 +143,8 @@ mod tests {
 
     #[test]
     fn opcode_sub_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             PUSH1 0x00
             SUB
@@ -147,7 +157,8 @@ mod tests {
 
     #[test]
     fn opcode_sub_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             PUSH1 0x01
             SUB
@@ -160,7 +171,8 @@ mod tests {
 
     #[test]
     fn opcode_sub_2() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x01
             PUSH1 0x00
             SUB
@@ -173,7 +185,8 @@ mod tests {
 
     #[test]
     fn opcode_sub_3() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             SUB
@@ -186,7 +199,8 @@ mod tests {
 
     #[test]
     fn opcode_sub_4() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             PUSH32 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff0
             SUB
@@ -199,7 +213,8 @@ mod tests {
 
     #[test]
     fn opcode_div_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             PUSH1 0x01
             DIV
@@ -212,7 +227,8 @@ mod tests {
 
     #[test]
     fn opcode_div_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x02
             PUSH1 0x01
             DIV
@@ -225,7 +241,8 @@ mod tests {
 
     #[test]
     fn opcode_div_2() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x02
             PUSH1 0x80
             DIV
@@ -238,7 +255,8 @@ mod tests {
 
     #[test]
     fn opcode_div_3() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH8  0x58d2c9fd8890dca1
             PUSH32 0x59996c6ef58409a71b05be0bada2445eb7c017d09442e7d158e0000000000000
             DIV
@@ -251,7 +269,8 @@ mod tests {
 
     #[test]
     fn opcode_div_4() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH4  0x58d2c9fd
             PUSH32 0x59996c6ef58409a71b05be0bada2445eb7c017d09442e7d158e0000000000000
             DIV
@@ -264,7 +283,8 @@ mod tests {
 
     #[test]
     fn opcode_mod_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             PUSH1 0x01
             MOD
@@ -277,7 +297,8 @@ mod tests {
 
     #[test]
     fn opcode_mod_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x02
             PUSH1 0x01
             MOD
@@ -290,7 +311,8 @@ mod tests {
 
     #[test]
     fn opcode_mod_2() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x02
             PUSH1 0x80
             MOD
@@ -303,7 +325,8 @@ mod tests {
 
     #[test]
     fn opcode_mod_3() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH8  0x58d2c9fd8890dca1
             PUSH32 0x59996c6ef58409a71b05be0bada2445eb7c017d09442e7d158e0000000000000
             MOD
@@ -316,7 +339,8 @@ mod tests {
 
     #[test]
     fn opcode_mod_4() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x59996c6ef58409a71b05be0bada2445eb7c017d09442e7d158e0000000000000
             PUSH8  0x58d2c9fd8890dca1
             MOD
@@ -329,7 +353,8 @@ mod tests {
 
     #[test]
     fn opcode_sdiv_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             PUSH1 0x01
             SDIV
@@ -342,7 +367,8 @@ mod tests {
 
     #[test]
     fn opcode_sdiv_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x02
             PUSH1 0x01
             SDIV
@@ -355,7 +381,8 @@ mod tests {
 
     #[test]
     fn opcode_sdiv_2() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x02
             PUSH1 0x80
             SDIV
@@ -368,7 +395,8 @@ mod tests {
 
     #[test]
     fn opcode_sdiv_3() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH8  0x58d2c9fd8890dca1
             PUSH32 0x59996c6ef58409a71b05be0bada2445eb7c017d09442e7d158e0000000000000
             SDIV
@@ -381,7 +409,8 @@ mod tests {
 
     #[test]
     fn opcode_sdiv_4() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe
             PUSH32 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffc
             SDIV
@@ -394,7 +423,8 @@ mod tests {
 
     #[test]
     fn opcode_sdiv_5() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000002
             PUSH32 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffc
             SDIV
@@ -407,7 +437,8 @@ mod tests {
 
     #[test]
     fn opcode_sdiv_6() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000004
             SDIV
@@ -420,7 +451,8 @@ mod tests {
 
     #[test]
     fn opcode_sdiv_7() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000002
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000004
             SDIV
@@ -433,7 +465,8 @@ mod tests {
 
     #[test]
     fn opcode_smod_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             PUSH1 0x01
             SMOD
@@ -446,7 +479,8 @@ mod tests {
 
     #[test]
     fn opcode_smod_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x02
             PUSH1 0x01
             SMOD
@@ -459,7 +493,8 @@ mod tests {
 
     #[test]
     fn opcode_smod_2() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x02
             PUSH1 0x80
             SMOD
@@ -472,7 +507,8 @@ mod tests {
 
     #[test]
     fn opcode_smod_3() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH8  0x58d2c9fd8890dca1
             PUSH32 0x59996c6ef58409a71b05be0bada2445eb7c017d09442e7d158e0000000000000
             SMOD
@@ -485,7 +521,8 @@ mod tests {
 
     #[test]
     fn opcode_smod_4() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x59996c6ef58409a71b05be0bada2445eb7c017d09442e7d158e0000000000000
             PUSH8  0x58d2c9fd8890dca1
             SMOD
@@ -498,7 +535,8 @@ mod tests {
 
     #[test]
     fn opcode_smod_5() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000003
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000004
             SMOD
@@ -511,7 +549,8 @@ mod tests {
 
     #[test]
     fn opcode_smod_6() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000003
             PUSH32 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffc
             SMOD
@@ -524,7 +563,8 @@ mod tests {
 
     #[test]
     fn opcode_addmod_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             PUSH1 0x01
             PUSH1 0x01
@@ -538,7 +578,8 @@ mod tests {
 
     #[test]
     fn opcode_addmod_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH8 0xffffffffffffffff
             PUSH8 0xfffffffffffffff0
             PUSH8 0x000000000000000f
@@ -552,7 +593,8 @@ mod tests {
 
     #[test]
     fn opcode_addmod_2() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH8 0xffffffffffffffff
             PUSH8 0xfffffffffffffff0
             PUSH8 0x0000000000000000
@@ -566,7 +608,8 @@ mod tests {
 
     #[test]
     fn opcode_addmod_3() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
@@ -580,7 +623,8 @@ mod tests {
 
     #[test]
     fn opcode_mulmod_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             PUSH1 0x00
             PUSH1 0x00
@@ -594,7 +638,8 @@ mod tests {
 
     #[test]
     fn opcode_mulmod_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             PUSH1 0x00
             PUSH1 0x01
@@ -608,7 +653,8 @@ mod tests {
 
     #[test]
     fn opcode_mulmod_2() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             PUSH1 0x01
@@ -622,7 +668,8 @@ mod tests {
 
     #[test]
     fn opcode_mulmod_3() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             PUSH32 0x00000000000000000000000000000000a0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7
             PUSH17 0x0100000000000000000000000000000000
@@ -636,7 +683,8 @@ mod tests {
 
     #[test]
     fn opcode_mulmod_4() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x59996c6ef58409a71b05be0bada2445eb7c017d09442e7d158e0000000000000
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
@@ -650,7 +698,8 @@ mod tests {
 
     #[test]
     fn opcode_mulmod_5() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
@@ -664,7 +713,8 @@ mod tests {
 
     #[test]
     fn opcode_exp_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             0
             2
             EXP
@@ -677,7 +727,8 @@ mod tests {
 
     #[test]
     fn opcode_exp_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             1
             2
             EXP
@@ -690,7 +741,8 @@ mod tests {
 
     #[test]
     fn opcode_exp_2() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             255
             2
             EXP
@@ -703,7 +755,8 @@ mod tests {
 
     #[test]
     fn opcode_exp_3() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             18446744073709551616
             3
             EXP
@@ -716,7 +769,8 @@ mod tests {
 
     #[test]
     fn opcode_exp_4() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             340282366920938463463374607431768211456
             3
             EXP
@@ -729,7 +783,8 @@ mod tests {
 
     #[test]
     fn opcode_exp_5() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             6277101735386680763835789423207666416102355444464034512896
             3
             EXP
@@ -742,7 +797,8 @@ mod tests {
 
     #[test]
     fn opcode_signextend_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000faffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             29
             SIGNEXTEND
@@ -755,7 +811,8 @@ mod tests {
 
     #[test]
     fn opcode_signextend_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000faffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             28
             SIGNEXTEND
@@ -768,7 +825,8 @@ mod tests {
 
     #[test]
     fn opcode_signextend_2() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x00000000000000000000000000000000000000000000000000000000000000fa
             0
             SIGNEXTEND
@@ -781,7 +839,8 @@ mod tests {
 
     #[test]
     fn opcode_signextend_3() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x00007affffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             29
             SIGNEXTEND
@@ -794,7 +853,8 @@ mod tests {
 
     #[test]
     fn opcode_signextend_4() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000faffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             32
             SIGNEXTEND
@@ -807,7 +867,8 @@ mod tests {
 
     #[test]
     fn opcode_signextend_5() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000faffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             340282366920938463463374607431768211456
             SIGNEXTEND
@@ -820,7 +881,8 @@ mod tests {
 
     #[test]
     fn opcode_lt_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             PUSH1 0x00
             LT
@@ -833,7 +895,8 @@ mod tests {
 
     #[test]
     fn opcode_lt_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             PUSH1 0x01
             LT
@@ -846,7 +909,8 @@ mod tests {
 
     #[test]
     fn opcode_lt_2() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x01
             PUSH1 0x00
             LT
@@ -859,7 +923,8 @@ mod tests {
 
     #[test]
     fn opcode_lt_3() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000100000000000000000000000000000000
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000000
             LT
@@ -872,7 +937,8 @@ mod tests {
 
     #[test]
     fn opcode_lt_4() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000000
             PUSH32 0x0000000000000000000000000000000100000000000000000000000000000000
             LT
@@ -885,7 +951,8 @@ mod tests {
 
     #[test]
     fn opcode_lt_5() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000100000000000000000000000000000001
             PUSH32 0x0000000000000000000000000000000100000000000000000000000000000000
             LT
@@ -898,7 +965,8 @@ mod tests {
 
     #[test]
     fn opcode_lt_6() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000100000000000000000000000000000001
             PUSH32 0x0000000000000000000000000000000100000000000000000000000000000001
             LT
@@ -911,7 +979,8 @@ mod tests {
 
     #[test]
     fn opcode_gt_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             PUSH1 0x00
             GT
@@ -924,7 +993,8 @@ mod tests {
 
     #[test]
     fn opcode_gt_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x01
             PUSH1 0x00
             GT
@@ -937,7 +1007,8 @@ mod tests {
 
     #[test]
     fn opcode_gt_2() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             PUSH1 0x01
             GT
@@ -950,7 +1021,8 @@ mod tests {
 
     #[test]
     fn opcode_gt_3() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000000
             PUSH32 0x0000000000000000000000000000000100000000000000000000000000000000
             GT
@@ -963,7 +1035,8 @@ mod tests {
 
     #[test]
     fn opcode_gt_4() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000100000000000000000000000000000000
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000000
             GT
@@ -976,7 +1049,8 @@ mod tests {
 
     #[test]
     fn opcode_gt_5() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000100000000000000000000000000000000
             PUSH32 0x0000000000000000000000000000000100000000000000000000000000000001
             GT
@@ -989,7 +1063,8 @@ mod tests {
 
     #[test]
     fn opcode_gt_6() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000100000000000000000000000000000001
             PUSH32 0x0000000000000000000000000000000100000000000000000000000000000001
             GT
@@ -1002,7 +1077,8 @@ mod tests {
 
     #[test]
     fn opcode_slt_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             PUSH1 0x00
             SLT
@@ -1015,7 +1091,8 @@ mod tests {
 
     #[test]
     fn opcode_slt_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             PUSH1 0x01
             SLT
@@ -1028,7 +1105,8 @@ mod tests {
 
     #[test]
     fn opcode_slt_2() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x01
             PUSH1 0x00
             SLT
@@ -1041,7 +1119,8 @@ mod tests {
 
     #[test]
     fn opcode_slt_3() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000100000000000000000000000000000000
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000000
             SLT
@@ -1054,7 +1133,8 @@ mod tests {
 
     #[test]
     fn opcode_slt_4() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000000
             PUSH32 0x0000000000000000000000000000000100000000000000000000000000000000
             SLT
@@ -1067,7 +1147,8 @@ mod tests {
 
     #[test]
     fn opcode_slt_5() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000100000000000000000000000000000001
             PUSH32 0x0000000000000000000000000000000100000000000000000000000000000000
             SLT
@@ -1080,7 +1161,8 @@ mod tests {
 
     #[test]
     fn opcode_slt_6() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000100000000000000000000000000000001
             PUSH32 0x0000000000000000000000000000000100000000000000000000000000000001
             SLT
@@ -1093,7 +1175,8 @@ mod tests {
 
     #[test]
     fn opcode_slt_7() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000000
             PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             SLT
@@ -1106,7 +1189,8 @@ mod tests {
 
     #[test]
     fn opcode_slt_8() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xffffffffffffffffffffffffffffffff00000000000000000000000000000001
             PUSH32 0xffffffffffffffffffffffffffffffff00000000000000000000000000000000
             SLT
@@ -1119,7 +1203,8 @@ mod tests {
 
     #[test]
     fn opcode_sgt_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             PUSH1 0x00
             SGT
@@ -1132,7 +1217,8 @@ mod tests {
 
     #[test]
     fn opcode_sgt_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x01
             PUSH1 0x00
             SGT
@@ -1145,7 +1231,8 @@ mod tests {
 
     #[test]
     fn opcode_sgt_2() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             PUSH1 0x01
             SGT
@@ -1158,7 +1245,8 @@ mod tests {
 
     #[test]
     fn opcode_sgt_3() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000000
             PUSH32 0x0000000000000000000000000000000100000000000000000000000000000000
             SGT
@@ -1171,7 +1259,8 @@ mod tests {
 
     #[test]
     fn opcode_sgt_4() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000100000000000000000000000000000000
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000000
             SGT
@@ -1184,7 +1273,8 @@ mod tests {
 
     #[test]
     fn opcode_sgt_5() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000100000000000000000000000000000000
             PUSH32 0x0000000000000000000000000000000100000000000000000000000000000001
             SGT
@@ -1197,7 +1287,8 @@ mod tests {
 
     #[test]
     fn opcode_sgt_6() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000100000000000000000000000000000001
             PUSH32 0x0000000000000000000000000000000100000000000000000000000000000001
             SGT
@@ -1210,7 +1301,8 @@ mod tests {
 
     #[test]
     fn opcode_sgt_7() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000000
             SGT
@@ -1223,7 +1315,8 @@ mod tests {
 
     #[test]
     fn opcode_sgt_8() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xffffffffffffffffffffffffffffffff00000000000000000000000000000000
             PUSH32 0xffffffffffffffffffffffffffffffff00000000000000000000000000000001
             SGT
@@ -1236,7 +1329,8 @@ mod tests {
 
     #[test]
     fn opcode_eq_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             PUSH1 0x00
             EQ
@@ -1249,7 +1343,8 @@ mod tests {
 
     #[test]
     fn opcode_eq_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             PUSH1 0x01
             EQ
@@ -1262,7 +1357,8 @@ mod tests {
 
     #[test]
     fn opcode_eq_2() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000001
             EQ
@@ -1275,7 +1371,8 @@ mod tests {
 
     #[test]
     fn opcode_iszero_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             ISZERO
             retword
@@ -1287,7 +1384,8 @@ mod tests {
 
     #[test]
     fn opcode_iszero_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x01
             ISZERO
             retword
@@ -1299,7 +1397,8 @@ mod tests {
 
     #[test]
     fn opcode_and_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             AND
@@ -1312,7 +1411,8 @@ mod tests {
 
     #[test]
     fn opcode_and_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000000
             AND
@@ -1325,7 +1425,8 @@ mod tests {
 
     #[test]
     fn opcode_or_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             OR
@@ -1338,7 +1439,8 @@ mod tests {
 
     #[test]
     fn opcode_or_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             OR
@@ -1351,7 +1453,8 @@ mod tests {
 
     #[test]
     fn opcode_xor_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             XOR
@@ -1364,7 +1467,8 @@ mod tests {
 
     #[test]
     fn opcode_xor_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000000
             XOR
@@ -1377,7 +1481,8 @@ mod tests {
 
     #[test]
     fn opcode_not_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             NOT
             retword
@@ -1389,7 +1494,8 @@ mod tests {
 
     #[test]
     fn opcode_not_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000000
             NOT
             retword
@@ -1401,7 +1507,8 @@ mod tests {
 
     #[test]
     fn opcode_byte_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             0
             BYTE
@@ -1414,7 +1521,8 @@ mod tests {
 
     #[test]
     fn opcode_byte_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             7
             BYTE
@@ -1427,7 +1535,8 @@ mod tests {
 
     #[test]
     fn opcode_byte_2() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             8
             BYTE
@@ -1440,7 +1549,8 @@ mod tests {
 
     #[test]
     fn opcode_byte_3() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             15
             BYTE
@@ -1453,7 +1563,8 @@ mod tests {
 
     #[test]
     fn opcode_byte_4() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             16
             BYTE
@@ -1466,7 +1577,8 @@ mod tests {
 
     #[test]
     fn opcode_byte_5() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             23
             BYTE
@@ -1479,7 +1591,8 @@ mod tests {
 
     #[test]
     fn opcode_byte_6() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             24
             BYTE
@@ -1492,7 +1605,8 @@ mod tests {
 
     #[test]
     fn opcode_byte_7() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             31
             BYTE
@@ -1505,7 +1619,8 @@ mod tests {
 
     #[test]
     fn opcode_byte_8() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             32
             BYTE
@@ -1518,7 +1633,8 @@ mod tests {
 
     #[test]
     fn opcode_byte_9() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             18446744073709551616
             BYTE
@@ -1531,7 +1647,8 @@ mod tests {
 
     #[test]
     fn opcode_byte_10() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             340282366920938463463374607431768211456
             BYTE
@@ -1544,7 +1661,8 @@ mod tests {
 
     #[test]
     fn opcode_shl_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000001
             PUSH1  0x00
             SHL
@@ -1557,7 +1675,8 @@ mod tests {
 
     #[test]
     fn opcode_shl_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000001
             PUSH1  0x01
             SHL
@@ -1570,7 +1689,8 @@ mod tests {
 
     #[test]
     fn opcode_shl_2() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000001
             PUSH1  0xff
             SHL
@@ -1583,7 +1703,8 @@ mod tests {
 
     #[test]
     fn opcode_shl_3() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000001
             PUSH2  0x0100
             SHL
@@ -1596,7 +1717,8 @@ mod tests {
 
     #[test]
     fn opcode_shl_4() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000001
             PUSH2  0x0101
             SHL
@@ -1609,7 +1731,8 @@ mod tests {
 
     #[test]
     fn opcode_shl_5() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             PUSH1  0x00
             SHL
@@ -1622,7 +1745,8 @@ mod tests {
 
     #[test]
     fn opcode_shl_6() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             PUSH1  0x01
             SHL
@@ -1635,7 +1759,8 @@ mod tests {
 
     #[test]
     fn opcode_shl_7() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             PUSH1  0xff
             SHL
@@ -1648,7 +1773,8 @@ mod tests {
 
     #[test]
     fn opcode_shl_8() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             PUSH2  0x0100
             SHL
@@ -1661,7 +1787,8 @@ mod tests {
 
     #[test]
     fn opcode_shl_9() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000000
             PUSH1  0x01
             SHL
@@ -1674,7 +1801,8 @@ mod tests {
 
     #[test]
     fn opcode_shl_10() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             PUSH1  0x01
             SHL
@@ -1687,7 +1815,8 @@ mod tests {
 
     #[test]
     fn opcode_shl_11() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000001
             PUSH17 0x0100000000000000000000000000000000
             SHL
@@ -1700,7 +1829,8 @@ mod tests {
 
     #[test]
     fn opcode_shl_12() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000001
             PUSH25 0x02000000000000000000000000000000000000000000000000
             SHL
@@ -1713,7 +1843,8 @@ mod tests {
 
     #[test]
     fn opcode_shl_13() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000001
             PUSH32 0xffffffffffffffff000000000000000000000000000000000000000000000000
             SHL
@@ -1726,7 +1857,8 @@ mod tests {
 
     #[test]
     fn opcode_shl_14() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000001
             PUSH32 0x000000000000000000000000000000000000000000000000ffffffffffffffff
             SHL
@@ -1739,7 +1871,8 @@ mod tests {
 
     #[test]
     fn opcode_shl_15() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000001
             PUSH32 0x0000000000000000000000000000000000000000000000000000000100000001
             SHL
@@ -1752,7 +1885,8 @@ mod tests {
 
     #[test]
     fn opcode_shl_16() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000001
             64
             SHL
@@ -1765,7 +1899,8 @@ mod tests {
 
     #[test]
     fn opcode_shl_17() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             1
             SHL
@@ -1778,7 +1913,8 @@ mod tests {
 
     #[test]
     fn opcode_shl_18() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             136
             SHL
@@ -1791,7 +1927,8 @@ mod tests {
 
     #[test]
     fn opcode_shl_19() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             248
             SHL
@@ -1804,7 +1941,8 @@ mod tests {
 
     #[test]
     fn opcode_shr_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000001
             PUSH1  0x00
             SHR
@@ -1817,7 +1955,8 @@ mod tests {
 
     #[test]
     fn opcode_shr_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000001
             PUSH1  0x01
             SHR
@@ -1830,7 +1969,8 @@ mod tests {
 
     #[test]
     fn opcode_shr_2() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x8000000000000000000000000000000000000000000000000000000000000000
             PUSH1  0x01
             SHR
@@ -1843,7 +1983,8 @@ mod tests {
 
     #[test]
     fn opcode_shr_3() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x8000000000000000000000000000000000000000000000000000000000000000
             PUSH1  0xff
             SHR
@@ -1856,7 +1997,8 @@ mod tests {
 
     #[test]
     fn opcode_shr_4() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x8000000000000000000000000000000000000000000000000000000000000000
             PUSH2  0x0100
             SHR
@@ -1869,7 +2011,8 @@ mod tests {
 
     #[test]
     fn opcode_shr_5() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x8000000000000000000000000000000000000000000000000000000000000000
             PUSH2  0x0101
             SHR
@@ -1882,7 +2025,8 @@ mod tests {
 
     #[test]
     fn opcode_shr_6() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             PUSH1  0x00
             SHR
@@ -1895,7 +2039,8 @@ mod tests {
 
     #[test]
     fn opcode_shr_7() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             PUSH1  0x01
             SHR
@@ -1908,7 +2053,8 @@ mod tests {
 
     #[test]
     fn opcode_shr_8() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             PUSH1  0xff
             SHR
@@ -1921,7 +2067,8 @@ mod tests {
 
     #[test]
     fn opcode_shr_9() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             PUSH2  0x0100
             SHR
@@ -1934,7 +2081,8 @@ mod tests {
 
     #[test]
     fn opcode_shr_10() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000000
             PUSH1  0x01
             SHR
@@ -1947,7 +2095,8 @@ mod tests {
 
     #[test]
     fn opcode_sar_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000001
             PUSH1  0x00
             SAR
@@ -1960,7 +2109,8 @@ mod tests {
 
     #[test]
     fn opcode_sar_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000001
             PUSH1  0x01
             SAR
@@ -1973,7 +2123,8 @@ mod tests {
 
     #[test]
     fn opcode_sar_2() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x8000000000000000000000000000000000000000000000000000000000000000
             PUSH1  0x01
             SAR
@@ -1986,7 +2137,8 @@ mod tests {
 
     #[test]
     fn opcode_sar_3() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x8000000000000000000000000000000000000000000000000000000000000000
             PUSH1  0xff
             SAR
@@ -1999,7 +2151,8 @@ mod tests {
 
     #[test]
     fn opcode_sar_4() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x8000000000000000000000000000000000000000000000000000000000000000
             PUSH2  0x0100
             SAR
@@ -2012,7 +2165,8 @@ mod tests {
 
     #[test]
     fn opcode_sar_5() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x8000000000000000000000000000000000000000000000000000000000000000
             PUSH2  0x0101
             SAR
@@ -2025,7 +2179,8 @@ mod tests {
 
     #[test]
     fn opcode_sar_6() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             PUSH1  0x00
             SAR
@@ -2038,7 +2193,8 @@ mod tests {
 
     #[test]
     fn opcode_sar_7() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             PUSH1  0x01
             SAR
@@ -2051,7 +2207,8 @@ mod tests {
 
     #[test]
     fn opcode_sar_8() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             PUSH1  0xff
             SAR
@@ -2064,7 +2221,8 @@ mod tests {
 
     #[test]
     fn opcode_sar_9() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             PUSH2  0x0100
             SAR
@@ -2077,7 +2235,8 @@ mod tests {
 
     #[test]
     fn opcode_sar_10() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000000
             PUSH1  0x01
             SAR
@@ -2090,7 +2249,8 @@ mod tests {
 
     #[test]
     fn opcode_sar_11() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x4000000000000000000000000000000000000000000000000000000000000000
             PUSH1  0xfe
             SAR
@@ -2103,7 +2263,8 @@ mod tests {
 
     #[test]
     fn opcode_sar_12() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             PUSH1  0xf8
             SAR
@@ -2116,7 +2277,8 @@ mod tests {
 
     #[test]
     fn opcode_sar_13() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             PUSH1  0xfe
             SAR
@@ -2129,7 +2291,8 @@ mod tests {
 
     #[test]
     fn opcode_sar_14() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             PUSH1  0xff
             SAR
@@ -2142,7 +2305,8 @@ mod tests {
 
     #[test]
     fn opcode_sar_15() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
             PUSH2  0x0100
             SAR
@@ -2155,7 +2319,8 @@ mod tests {
 
     #[test]
     fn opcode_sha3_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             PUSH1 0x00
             SHA3
@@ -2168,7 +2333,8 @@ mod tests {
 
     #[test]
     fn opcode_sha3_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             PUSH1 0x01
             SHA3
@@ -2181,7 +2347,8 @@ mod tests {
 
     #[test]
     fn opcode_sha3_2() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x01
             PUSH1 0x00
             SHA3
@@ -2194,7 +2361,8 @@ mod tests {
 
     #[test]
     fn opcode_sha3_3() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             PUSH1 0x00
             MSTORE
@@ -2210,7 +2378,8 @@ mod tests {
 
     #[test]
     fn opcode_sha3_4() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3
             PUSH1  0x00
             MSTORE
@@ -2226,7 +2395,8 @@ mod tests {
 
     #[test]
     fn opcode_sha3_5() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x00d4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8f
             PUSH1  0x00
             MSTORE
@@ -2245,7 +2415,8 @@ mod tests {
 
     #[test]
     fn opcode_sha3_6() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             PUSH1 0x00
             SHA3
@@ -2259,7 +2430,8 @@ mod tests {
 
     #[test]
     fn opcode_sha3_7() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             PUSH1 0x01
             SHA3
@@ -2273,7 +2445,8 @@ mod tests {
 
     #[test]
     fn opcode_sha3_8() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x01
             PUSH1 0x00
             SHA3
@@ -2287,7 +2460,8 @@ mod tests {
 
     #[test]
     fn opcode_sha3_9() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x21
             PUSH1 0x00
             SHA3
@@ -2301,7 +2475,8 @@ mod tests {
 
     #[test]
     fn opcode_sha3_10() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x20
             PUSH1 0x01
             SHA3
@@ -2503,7 +2678,8 @@ mod tests {
 
     #[test]
     fn opcode_pop_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000001
             PUSH32 0x0000000000000000000000000000000000000000000000000000000000000002
             POP
@@ -2516,7 +2692,8 @@ mod tests {
 
     #[test]
     fn opcode_mload_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             MLOAD
             retword
@@ -2528,7 +2705,8 @@ mod tests {
 
     #[test]
     fn opcode_mload_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x01
             MLOAD
             retword
@@ -2540,7 +2718,8 @@ mod tests {
 
     #[test]
     fn opcode_mstore_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0xff
             0
             MSTORE
@@ -2555,7 +2734,8 @@ mod tests {
 
     #[test]
     fn opcode_mstore_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0xff
             1
             MSTORE
@@ -2570,7 +2750,8 @@ mod tests {
 
     #[test]
     fn opcode_mstore_2() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0xff
             0
             MSTORE
@@ -2585,7 +2766,8 @@ mod tests {
 
     #[test]
     fn opcode_mstore_3() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0xff
             1
             MSTORE
@@ -2600,7 +2782,8 @@ mod tests {
 
     #[test]
     fn opcode_jump_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x04
             JUMP
             STOP
@@ -2615,7 +2798,8 @@ mod tests {
 
     #[test]
     fn opcode_jumpi_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x01
             PUSH1 0x06
             JUMPI
@@ -2631,7 +2815,8 @@ mod tests {
 
     #[test]
     fn opcode_jumpi_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             PUSH1 0xff
             JUMPI
@@ -2645,7 +2830,8 @@ mod tests {
 
     #[test]
     fn opcode_pc_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PC
             retword
             ",
@@ -2656,7 +2842,8 @@ mod tests {
 
     #[test]
     fn opcode_pc_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             PC
             retword
@@ -2668,7 +2855,8 @@ mod tests {
 
     #[test]
     fn opcode_msize_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             MSIZE
             retword
             ",
@@ -2679,7 +2867,8 @@ mod tests {
 
     #[test]
     fn opcode_msize_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             MLOAD
             MSIZE
@@ -2692,7 +2881,8 @@ mod tests {
 
     #[test]
     fn opcode_msize_2() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x00
             PUSH1 0x00
             MSTORE
@@ -2706,7 +2896,8 @@ mod tests {
 
     #[test]
     fn opcode_gas_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             GAS
             retword
             ",
@@ -2717,7 +2908,8 @@ mod tests {
 
     #[test]
     fn opcode_push1_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0xd7
             retword
             ",
@@ -2728,7 +2920,8 @@ mod tests {
 
     #[test]
     fn opcode_push2_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH2 0xd6d7
             retword
             ",
@@ -2739,7 +2932,8 @@ mod tests {
 
     #[test]
     fn opcode_push4_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH4 0xd4d5d6d7
             retword
             ",
@@ -2750,7 +2944,8 @@ mod tests {
 
     #[test]
     fn opcode_push3_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH3 0xd5d6d7
             retword
             ",
@@ -2761,7 +2956,8 @@ mod tests {
 
     #[test]
     fn opcode_push5_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH5 0xd3d4d5d6d7
             retword
             ",
@@ -2772,7 +2968,8 @@ mod tests {
 
     #[test]
     fn opcode_push6_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH6 0xd2d3d4d5d6d7
             retword
             ",
@@ -2783,7 +2980,8 @@ mod tests {
 
     #[test]
     fn opcode_push7_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH7 0xd1d2d3d4d5d6d7
             retword
             ",
@@ -2794,7 +2992,8 @@ mod tests {
 
     #[test]
     fn opcode_push8_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH8 0xd0d1d2d3d4d5d6d7
             retword
             ",
@@ -2805,7 +3004,8 @@ mod tests {
 
     #[test]
     fn opcode_push9_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH9 0xc7d0d1d2d3d4d5d6d7
             retword
             ",
@@ -2816,7 +3016,8 @@ mod tests {
 
     #[test]
     fn opcode_push10_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH10 0xc6c7d0d1d2d3d4d5d6d7
             retword
             ",
@@ -2827,7 +3028,8 @@ mod tests {
 
     #[test]
     fn opcode_push11_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH11 0xc5c6c7d0d1d2d3d4d5d6d7
             retword
             ",
@@ -2838,7 +3040,8 @@ mod tests {
 
     #[test]
     fn opcode_push12_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH12 0xc4c5c6c7d0d1d2d3d4d5d6d7
             retword
             ",
@@ -2849,7 +3052,8 @@ mod tests {
 
     #[test]
     fn opcode_push13_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH13 0xc3c4c5c6c7d0d1d2d3d4d5d6d7
             retword
             ",
@@ -2860,7 +3064,8 @@ mod tests {
 
     #[test]
     fn opcode_push14_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH14 0xc2c3c4c5c6c7d0d1d2d3d4d5d6d7
             retword
             ",
@@ -2871,7 +3076,8 @@ mod tests {
 
     #[test]
     fn opcode_push15_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH15 0xc1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             retword
             ",
@@ -2882,7 +3088,8 @@ mod tests {
 
     #[test]
     fn opcode_push16_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH16 0xc0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             retword
             ",
@@ -2893,7 +3100,8 @@ mod tests {
 
     #[test]
     fn opcode_push17_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH17 0xb7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             retword
             ",
@@ -2904,7 +3112,8 @@ mod tests {
 
     #[test]
     fn opcode_push18_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH18 0xb6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             retword
             ",
@@ -2915,7 +3124,8 @@ mod tests {
 
     #[test]
     fn opcode_push19_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH19 0xb5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             retword
             ",
@@ -2926,7 +3136,8 @@ mod tests {
 
     #[test]
     fn opcode_push20_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH20 0xb4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             retword
             ",
@@ -2937,7 +3148,8 @@ mod tests {
 
     #[test]
     fn opcode_push21_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH21 0xb3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             retword
             ",
@@ -2948,7 +3160,8 @@ mod tests {
 
     #[test]
     fn opcode_push22_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH22 0xb2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             retword
             ",
@@ -2959,7 +3172,8 @@ mod tests {
 
     #[test]
     fn opcode_push23_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH23 0xb1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             retword
             ",
@@ -2970,7 +3184,8 @@ mod tests {
 
     #[test]
     fn opcode_push24_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH24 0xb0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             retword
             ",
@@ -2981,7 +3196,8 @@ mod tests {
 
     #[test]
     fn opcode_push25_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH25 0xa7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             retword
             ",
@@ -2992,7 +3208,8 @@ mod tests {
 
     #[test]
     fn opcode_push26_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH26 0xa6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             retword
             ",
@@ -3003,7 +3220,8 @@ mod tests {
 
     #[test]
     fn opcode_push27_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH27 0xa5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             retword
             ",
@@ -3014,7 +3232,8 @@ mod tests {
 
     #[test]
     fn opcode_push28_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH28 0xa4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             retword
             ",
@@ -3025,7 +3244,8 @@ mod tests {
 
     #[test]
     fn opcode_push29_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH29 0xa3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             retword
             ",
@@ -3036,7 +3256,8 @@ mod tests {
 
     #[test]
     fn opcode_push30_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH30 0xa2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             retword
             ",
@@ -3047,7 +3268,8 @@ mod tests {
 
     #[test]
     fn opcode_push31_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH31 0xa1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             retword
             ",
@@ -3058,7 +3280,8 @@ mod tests {
 
     #[test]
     fn opcode_push32_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH32 0xa0a1a2a3a4a5a6a7b0b1b2b3b4b5b6b7c0c1c2c3c4c5c6c7d0d1d2d3d4d5d6d7
             retword
             ",
@@ -3069,7 +3292,8 @@ mod tests {
 
     #[test]
     fn opcode_return_0() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x20
             PUSH1 0x00
             RETURN
@@ -3081,7 +3305,8 @@ mod tests {
 
     #[test]
     fn opcode_return_1() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x01
             PUSH1 0x00
             MSTORE
@@ -3096,7 +3321,8 @@ mod tests {
 
     #[test]
     fn opcode_return_2() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             PUSH1 0x01
             PUSH1 0x00
             RETURN
@@ -3108,7 +3334,8 @@ mod tests {
 
     #[test]
     fn opcode_return_3() {
-        vm_assert_eq("
+        vm_assert_eq(
+            "
             0
             MLOAD
             GAS

@@ -22,6 +22,6 @@ extern crate num_derive;
 pub mod assembler;
 mod instructions;
 pub mod schedule;
-pub mod utils;
 pub mod u256;
+pub mod utils;
 pub mod vm;

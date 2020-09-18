@@ -32,7 +32,9 @@ impl U256 {
     }
 
     pub fn from_slice(value: &[u64]) -> U256 {
-        U256 { 0: [value[0], value[1], value[2], value[3]] }
+        U256 {
+            0: [value[0], value[1], value[2], value[3]],
+        }
     }
 
     pub fn from_dec_str(value: &str) -> Result<U256, uint::FromDecStrErr> {
@@ -40,27 +42,33 @@ impl U256 {
             Ok(temp) => {
                 let mask = ethereum_types::U256::from(u64::max_value());
                 let data: [u64; 4] = [
-                    ((temp >>   0) & mask).as_u64(),
-                    ((temp >>  64) & mask).as_u64(),
+                    ((temp >> 0) & mask).as_u64(),
+                    ((temp >> 64) & mask).as_u64(),
                     ((temp >> 128) & mask).as_u64(),
-                    ((temp >> 192) & mask).as_u64()
+                    ((temp >> 192) & mask).as_u64(),
                 ];
                 Ok(U256::from_slice(&data))
             }
-            Err(err) => Err(err)
+            Err(err) => Err(err),
         }
     }
 
     pub fn from_u64(value: u64) -> U256 {
-        U256 { 0: [value, 0, 0, 0] }
+        U256 {
+            0: [value, 0, 0, 0],
+        }
     }
 
     pub fn from_bool(value: bool) -> U256 {
-        U256 { 0: [value as u64, 0, 0, 0] }
+        U256 {
+            0: [value as u64, 0, 0, 0],
+        }
     }
 
     pub fn broadcast_u64(value: u64) -> U256 {
-        U256 { 0: [value, value, value, value] }
+        U256 {
+            0: [value, value, value, value],
+        }
     }
 
     pub fn low_u64(&self) -> u64 {
@@ -117,15 +125,19 @@ impl Word {
     pub unsafe fn from_slice(value: &[u64]) -> Word {
         #[cfg(target_feature = "avx2")]
         {
-            return Word(_mm256_set_epi64x(value[3] as i64,
-                                          value[2] as i64,
-                                          value[1] as i64,
-                                          value[0] as i64));
+            return Word(_mm256_set_epi64x(
+                value[3] as i64,
+                value[2] as i64,
+                value[1] as i64,
+                value[0] as i64,
+            ));
         }
         #[cfg(all(not(target_feature = "avx2"), target_feature = "ssse3"))]
         {
-            return Word((_mm_set_epi64x(value[1] as i64, value[0] as i64),
-                         _mm_set_epi64x(value[3] as i64, value[2] as i64)));
+            return Word((
+                _mm_set_epi64x(value[1] as i64, value[0] as i64),
+                _mm_set_epi64x(value[3] as i64, value[2] as i64),
+            ));
         }
         #[cfg(not(target_feature = "ssse3"))]
         {
@@ -236,7 +248,10 @@ fn bitmask(num_bytes: i32) -> u64 {
 pub unsafe fn load16_u256(src: *const U256, num_bytes: i32) -> U256 {
     #[cfg(target_feature = "avx2")]
     {
-        let lane8_id = _mm256_set_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31);
+        let lane8_id = _mm256_set_epi8(
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+            24, 25, 26, 27, 28, 29, 30, 31,
+        );
         let all_ones = _mm256_set_epi64x(-1, -1, -1, -1);
         //
         let src = src as *const __m128i;
@@ -264,11 +279,11 @@ pub unsafe fn load16_u256(src: *const U256, num_bytes: i32) -> U256 {
     // generic target
     let src = src as *const u64;
     if num_bytes <= 8 {
-        let mask: u64 = bitmask(num_bytes-0);
+        let mask: u64 = bitmask(num_bytes - 0);
         let temp0 = *src.offset(0) & mask;
         U256([temp0, 0, 0, 0])
     } else {
-        let mask: u64 = bitmask(num_bytes-8);
+        let mask: u64 = bitmask(num_bytes - 8);
         let temp0 = *src.offset(0);
         let temp1 = *src.offset(1) & mask;
         U256([temp0, temp1, 0, 0])
@@ -279,7 +294,10 @@ pub unsafe fn load16_u256(src: *const U256, num_bytes: i32) -> U256 {
 pub unsafe fn load32_u256(src: *const U256, num_bytes: i32) -> U256 {
     #[cfg(target_feature = "avx2")]
     {
-        let lane8_id = _mm256_set_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31);
+        let lane8_id = _mm256_set_epi8(
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+            24, 25, 26, 27, 28, 29, 30, 31,
+        );
         let all_ones = _mm256_set_epi64x(-1, -1, -1, -1);
         //
         let src = src as *const __m256i;
@@ -302,18 +320,21 @@ pub unsafe fn load32_u256(src: *const U256, num_bytes: i32) -> U256 {
         let floor = _mm_shuffle_epi8(sfloor, _mm_setzero_si128());
         let ssum = _mm_adds_epu8(lane8_id, floor);
         let mask = _mm_cmpeq_epi8(ssum, all_ones);
-        return std::mem::transmute::<(__m128i, __m128i), U256>((valuelo, _mm_and_si128(valuehi, mask)));
+        return std::mem::transmute::<(__m128i, __m128i), U256>((
+            valuelo,
+            _mm_and_si128(valuehi, mask),
+        ));
     }
     // generic target
     let src = src as *const u64;
     if num_bytes <= 24 {
-        let mask: u64 = bitmask(num_bytes-16);
+        let mask: u64 = bitmask(num_bytes - 16);
         let temp0 = *src.offset(0);
         let temp1 = *src.offset(1);
         let temp2 = *src.offset(2) & mask;
         U256([temp0, temp1, temp2, 0])
     } else {
-        let mask: u64 = bitmask(num_bytes-24);
+        let mask: u64 = bitmask(num_bytes - 24);
         let temp0 = *src.offset(0);
         let temp1 = *src.offset(1);
         let temp2 = *src.offset(2);
@@ -326,7 +347,10 @@ pub unsafe fn load32_u256(src: *const U256, num_bytes: i32) -> U256 {
 pub unsafe fn bswap_u256(value: U256) -> U256 {
     #[cfg(target_feature = "avx2")]
     {
-        let lane8_id = _mm256_set_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31);
+        let lane8_id = _mm256_set_epi8(
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+            24, 25, 26, 27, 28, 29, 30, 31,
+        );
         const SWAP_LANE128: i32 = (1 << 0) + (0 << 4);
         //
         let value = std::mem::transmute::<U256, __m256i>(value);
@@ -344,7 +368,12 @@ pub unsafe fn bswap_u256(value: U256) -> U256 {
         return std::mem::transmute::<(__m128i, __m128i), U256>((resultlo, resulthi));
     }
     // generic target
-    U256([value.0[3].swap_bytes(), value.0[2].swap_bytes(), value.0[1].swap_bytes(), value.0[0].swap_bytes()])
+    U256([
+        value.0[3].swap_bytes(),
+        value.0[2].swap_bytes(),
+        value.0[1].swap_bytes(),
+        value.0[0].swap_bytes(),
+    ])
 }
 
 #[allow(unreachable_code)]
@@ -466,7 +495,10 @@ pub unsafe fn signextend_u256(a: U256, b: U256) -> U256 {
     #[cfg(target_feature = "avx2")]
     {
         const SWAP_LANE128: i32 = (1 << 0) + (0 << 4);
-        let lane8_rev_id = _mm256_set_epi8(31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
+        let lane8_rev_id = _mm256_set_epi8(
+            31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10,
+            9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
+        );
         //
         let _a = std::mem::transmute::<U256, __m256i>(a);
         let _b = std::mem::transmute::<U256, __m256i>(b);
@@ -488,7 +520,9 @@ pub unsafe fn signextend_u256(a: U256, b: U256) -> U256 {
     {
         let zero = _mm_setzero_si128();
         let lane8_rev_id_lo = _mm_set_epi8(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
-        let lane8_rev_id_hi = _mm_set_epi8(31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16);
+        let lane8_rev_id_hi = _mm_set_epi8(
+            31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16,
+        );
         //
         let _a = std::mem::transmute::<U256, (__m128i, __m128i)>(a);
         let _b = std::mem::transmute::<U256, (__m128i, __m128i)>(b);
@@ -514,10 +548,10 @@ pub unsafe fn signextend_u256(a: U256, b: U256) -> U256 {
     // generic target
     let _a = a.low_u64() & 31;
     let num_bytes = _a as i32 + 1;
-    let mask0 = bitmask(clamp_i32(num_bytes- 0, 0, 8));
-    let mask1 = bitmask(clamp_i32(num_bytes- 8, 0, 8));
-    let mask2 = bitmask(clamp_i32(num_bytes-16, 0, 8));
-    let mask3 = bitmask(clamp_i32(num_bytes-24, 0, 8));
+    let mask0 = bitmask(clamp_i32(num_bytes - 0, 0, 8));
+    let mask1 = bitmask(clamp_i32(num_bytes - 8, 0, 8));
+    let mask2 = bitmask(clamp_i32(num_bytes - 16, 0, 8));
+    let mask3 = bitmask(clamp_i32(num_bytes - 24, 0, 8));
     let amount = _a % 8;
     let signbit = 0x80 << (amount * 8);
     let index = (_a / 8) as usize;
@@ -600,7 +634,12 @@ pub unsafe fn and_u256(a: U256, b: U256) -> U256 {
         return std::mem::transmute::<(__m128i, __m128i), U256>(result);
     }
     // generic target
-    U256([a.0[0] & b.0[0], a.0[1] & b.0[1], a.0[2] & b.0[2], a.0[3] & b.0[3]])
+    U256([
+        a.0[0] & b.0[0],
+        a.0[1] & b.0[1],
+        a.0[2] & b.0[2],
+        a.0[3] & b.0[3],
+    ])
 }
 
 #[allow(unreachable_code)]
@@ -620,7 +659,12 @@ pub unsafe fn or_u256(a: U256, b: U256) -> U256 {
         return std::mem::transmute::<(__m128i, __m128i), U256>(result);
     }
     // generic target
-    U256([a.0[0] | b.0[0], a.0[1] | b.0[1], a.0[2] | b.0[2], a.0[3] | b.0[3]])
+    U256([
+        a.0[0] | b.0[0],
+        a.0[1] | b.0[1],
+        a.0[2] | b.0[2],
+        a.0[3] | b.0[3],
+    ])
 }
 
 #[allow(unreachable_code)]
@@ -640,7 +684,12 @@ pub unsafe fn xor_u256(a: U256, b: U256) -> U256 {
         return std::mem::transmute::<(__m128i, __m128i), U256>(result);
     }
     // generic target
-    U256([a.0[0] ^ b.0[0], a.0[1] ^ b.0[1], a.0[2] ^ b.0[2], a.0[3] ^ b.0[3]])
+    U256([
+        a.0[0] ^ b.0[0],
+        a.0[1] ^ b.0[1],
+        a.0[2] ^ b.0[2],
+        a.0[3] ^ b.0[3],
+    ])
 }
 
 #[allow(unreachable_code)]
@@ -689,7 +738,7 @@ unsafe fn bshl_ssse3(value: (__m128i, __m128i), count: __m128i) -> (__m128i, __m
     let carry = _mm_shuffle_epi8(value.0, csmask);
     let resultlo = templo;
     let resulthi = _mm_or_si128(temphi, _mm_and_si128(carry, mask));
-    return (resultlo, resulthi)
+    return (resultlo, resulthi);
 }
 
 #[cfg(target_feature = "ssse3")]
@@ -704,12 +753,16 @@ unsafe fn bmask_ssse3(bcount: __m128i) -> (__m128i, __m128i) {
 
 #[inline(always)]
 #[cfg(target_feature = "ssse3")]
-unsafe fn bshrmsb_ssse3(value: (__m128i, __m128i), count: __m128i, arithmetic: bool) -> ((__m128i, __m128i), __m128i) {
+unsafe fn bshrmsb_ssse3(
+    value: (__m128i, __m128i),
+    count: __m128i,
+    arithmetic: bool,
+) -> ((__m128i, __m128i), __m128i) {
     let zero = _mm_setzero_si128();
     let sixteen = _mm_set_epi64x(0, 16);
     let lane8_id = _mm_set_epi8(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
-    let lane8_ceil0_id = _mm_add_epi8(lane8_id, _mm_shuffle_epi8(_mm_set_epi64x(0, 16*7), zero));
-    let lane8_ceil1_id = _mm_add_epi8(lane8_id, _mm_shuffle_epi8(_mm_set_epi64x(0, 16*6), zero));
+    let lane8_ceil0_id = _mm_add_epi8(lane8_id, _mm_shuffle_epi8(_mm_set_epi64x(0, 16 * 7), zero));
+    let lane8_ceil1_id = _mm_add_epi8(lane8_id, _mm_shuffle_epi8(_mm_set_epi64x(0, 16 * 6), zero));
     // byte shift
     let bcount = _mm_shuffle_epi8(count, zero);
     let smask = _mm_add_epi8(lane8_ceil0_id, bcount);
@@ -811,15 +864,15 @@ pub unsafe fn shl_u256(count: U256, value: U256) -> U256 {
     let offset = (count64 / 64) as usize;
     let padded: [u64; 8] = [0, 0, 0, 0, value.0[0], value.0[1], value.0[2], value.0[3]];
     let wordsl: [u64; 4] = [
-        padded[4+0-offset],
-        padded[4+1-offset],
-        padded[4+2-offset],
-        padded[4+3-offset],
+        padded[4 + 0 - offset],
+        padded[4 + 1 - offset],
+        padded[4 + 2 - offset],
+        padded[4 + 3 - offset],
     ];
     let slcount = count64 % 64;
-    let srcount = 64-slcount;
+    let srcount = 64 - slcount;
     let sr0count = srcount.min(63);
-    let sr1count = srcount-sr0count;
+    let sr1count = srcount - sr0count;
     let sltemp3 = wordsl[3] << slcount;
     let sltemp2 = wordsl[2] << slcount;
     let sltemp1 = wordsl[1] << slcount;
@@ -831,7 +884,7 @@ pub unsafe fn shl_u256(count: U256, value: U256) -> U256 {
         sltemp0,
         sltemp1 | srtemp0,
         sltemp2 | srtemp1,
-        sltemp3 | srtemp2
+        sltemp3 | srtemp2,
     ]);
     let hi248 = U256([count.0[0] & !0xff, count.0[1], count.0[2], count.0[3]]);
     let hiisz = U256::broadcast_u64(bitmask_bool(is_zero_u256(hi248)));
@@ -887,8 +940,7 @@ pub unsafe fn shr_u256(count: U256, value: U256, arithmetic: bool) -> U256 {
         let hiisz = broadcast_avx2(is_zero_u256(hi248.as_u256()));
         let result = if arithmetic {
             _mm256_blendv_epi8(msb, bitsl, hiisz)
-        }
-        else {
+        } else {
             _mm256_and_si256(bitsl, hiisz)
         };
         return std::mem::transmute::<__m256i, U256>(result);
@@ -925,9 +977,11 @@ pub unsafe fn shr_u256(count: U256, value: U256, arithmetic: bool) -> U256 {
         let hi248 = std::mem::transmute::<(__m128i, __m128i), U256>(hi248);
         let hiisz = broadcast_sse2(is_zero_u256(hi248));
         let result = if arithmetic {
-            (mm_blendv_epi8(msb, bitsllo, hiisz), mm_blendv_epi8(msb, bitslhi, hiisz))
-        }
-        else {
+            (
+                mm_blendv_epi8(msb, bitsllo, hiisz),
+                mm_blendv_epi8(msb, bitslhi, hiisz),
+            )
+        } else {
             (_mm_and_si128(hiisz, bitsllo), _mm_and_si128(hiisz, bitslhi))
         };
         return std::mem::transmute::<(__m128i, __m128i), U256>(result);
@@ -940,17 +994,19 @@ pub unsafe fn shr_u256(count: U256, value: U256, arithmetic: bool) -> U256 {
     } else {
         0
     };
-    let padded: [u64; 8] = [value.0[0], value.0[1], value.0[2], value.0[3], msb, msb, msb, msb];
+    let padded: [u64; 8] = [
+        value.0[0], value.0[1], value.0[2], value.0[3], msb, msb, msb, msb,
+    ];
     let wordsr: [u64; 4] = [
-        padded[0+offset],
-        padded[1+offset],
-        padded[2+offset],
-        padded[3+offset],
+        padded[0 + offset],
+        padded[1 + offset],
+        padded[2 + offset],
+        padded[3 + offset],
     ];
     let srcount = count64 % 64;
-    let slcount = 64-srcount;
+    let slcount = 64 - srcount;
     let sl0count = slcount.min(63);
-    let sl1count = slcount-sl0count;
+    let sl1count = slcount - sl0count;
     let srtemp3 = wordsr[3] >> srcount;
     let srtemp2 = wordsr[2] >> srcount;
     let srtemp1 = wordsr[1] >> srcount;
@@ -963,7 +1019,7 @@ pub unsafe fn shr_u256(count: U256, value: U256, arithmetic: bool) -> U256 {
         srtemp0 | sltemp1,
         srtemp1 | sltemp2,
         srtemp2 | sltemp3,
-        srtemp3 | sltemp4
+        srtemp3 | sltemp4,
     ]);
     let hi248 = U256([count.0[0] & !0xff, count.0[1], count.0[2], count.0[3]]);
     let hiisz = U256::broadcast_u64(bitmask_bool(is_zero_u256(hi248)));
@@ -973,8 +1029,7 @@ pub unsafe fn shr_u256(count: U256, value: U256, arithmetic: bool) -> U256 {
         let result2 = blend_u64(msb, bitsr.0[2], hiisz.0[2]);
         let result3 = blend_u64(msb, bitsr.0[3], hiisz.0[3]);
         U256([result0, result1, result2, result3])
-    }
-    else {
+    } else {
         let result = and_u256(bitsr, hiisz);
         result
     }
@@ -1021,37 +1076,41 @@ fn mul_diag(num_limbs: usize, i: usize, a: &[u64], b: u64, r: &mut [u64], c: &mu
         if j == 0 {
             c[i] = temp as u64;
             carry = (temp >> 64) as u64;
-        }
-        else {
+        } else {
             let temp2 = temp + (carry as u128);
             if j == (num_limbs - 1) {
-                r[j-1] = temp2 as u64;
-                r[j-0] = (temp2 >> 64) as u64;
-            }
-            else {
-                r[j-1] = temp2 as u64;
+                r[j - 1] = temp2 as u64;
+                r[j - 0] = (temp2 >> 64) as u64;
+            } else {
+                r[j - 1] = temp2 as u64;
                 carry = (temp2 >> 64) as u64;
             }
         }
     }
 }
 
-fn mul_diagc(num_limbs: usize, i: usize, a: &[u64], b: u64, r: &mut [u64], rp: &mut [u64], c: &mut [u64]) {
+fn mul_diagc(
+    num_limbs: usize,
+    i: usize,
+    a: &[u64],
+    b: u64,
+    r: &mut [u64],
+    rp: &mut [u64],
+    c: &mut [u64],
+) {
     let mut carry: u64 = 0;
     for j in 0..num_limbs {
         let temp = mul_u64(a[j], b) + (r[j] as u128);
         if j == 0 {
             c[i] = temp as u64;
             carry = (temp >> 64) as u64;
-        }
-        else {
+        } else {
             let temp2 = temp + (carry as u128);
             if j == (num_limbs - 1) {
-                rp[j-1] = temp2 as u64;
-                rp[j-0] = (temp2 >> 64) as u64;
-            }
-            else {
-                rp[j-1] = temp2 as u64;
+                rp[j - 1] = temp2 as u64;
+                rp[j - 0] = (temp2 >> 64) as u64;
+            } else {
+                rp[j - 1] = temp2 as u64;
                 carry = (temp2 >> 64) as u64;
             }
         }
@@ -1071,7 +1130,7 @@ fn mul_limbs(num_limbs: usize, a: &[u64], b: &[u64], c: &mut [u64]) {
         }
     }
     for i in 0..num_limbs {
-        c[num_limbs+i] = rp[i];
+        c[num_limbs + i] = rp[i];
     }
 }
 
@@ -1095,7 +1154,10 @@ fn overflowing_sub_u256(a: U256, b: U256) -> (U256, bool) {
     let (lo, borrowlo) = alo.overflowing_sub(blo);
     let hi = ahi.wrapping_sub(bhi).wrapping_sub(borrowlo as u128);
     let borrow = (ahi < bhi) | ((ahi == bhi) & borrowlo);
-    (U256([lo as u64, (lo >> 64) as u64, hi as u64, (hi >> 64) as u64]), borrow)
+    (
+        U256([lo as u64, (lo >> 64) as u64, hi as u64, (hi >> 64) as u64]),
+        borrow,
+    )
 }
 
 pub fn sub_u256(a: U256, b: U256) -> U256 {
@@ -1157,14 +1219,14 @@ unsafe fn move_mask(value: U256) -> u32 {
         return bits as u32;
     }
     // generic target
-    (((((value.0[0]      ) as u32) == 0) as u32) * (0xf      )) |
-    (((((value.0[0] >> 32) as u32) == 0) as u32) * (0xf <<  4)) |
-    (((((value.0[1]      ) as u32) == 0) as u32) * (0xf <<  8)) |
-    (((((value.0[1] >> 32) as u32) == 0) as u32) * (0xf << 12)) |
-    (((((value.0[2]      ) as u32) == 0) as u32) * (0xf << 16)) |
-    (((((value.0[2] >> 32) as u32) == 0) as u32) * (0xf << 20)) |
-    (((((value.0[3]      ) as u32) == 0) as u32) * (0xf << 24)) |
-    (((((value.0[3] >> 32) as u32) == 0) as u32) * (0xf << 28))
+    (((((value.0[0]) as u32) == 0) as u32) * (0xf))
+        | (((((value.0[0] >> 32) as u32) == 0) as u32) * (0xf << 4))
+        | (((((value.0[1]) as u32) == 0) as u32) * (0xf << 8))
+        | (((((value.0[1] >> 32) as u32) == 0) as u32) * (0xf << 12))
+        | (((((value.0[2]) as u32) == 0) as u32) * (0xf << 16))
+        | (((((value.0[2] >> 32) as u32) == 0) as u32) * (0xf << 20))
+        | (((((value.0[3]) as u32) == 0) as u32) * (0xf << 24))
+        | (((((value.0[3] >> 32) as u32) == 0) as u32) * (0xf << 28))
 }
 
 pub fn count_u32s(value: U256) -> isize {
@@ -1187,7 +1249,7 @@ pub unsafe fn negate_u256(value: U256) -> U256 {
             U256([1, 0, 0, 0]), // 4: 100
             U256([1, 1, 0, 0]), // 5: 101
             U256([1, 0, 0, 0]), // 6: 110
-            U256([1, 1, 1, 1])  // 7: 111
+            U256([1, 1, 1, 1]), // 7: 111
         ];
         let all_ones = _mm256_set_epi64x(-1, -1, -1, -1);
         //
@@ -1195,7 +1257,7 @@ pub unsafe fn negate_u256(value: U256) -> U256 {
         let notv = _mm256_andnot_si256(value, all_ones);
         let mask = _mm256_cmpeq_epi64(notv, all_ones);
         let bits = _mm256_movemask_epi8(mask);
-        let index = _pext_u32(bits as u32, (1 | (1<<8) | (1<<16)));
+        let index = _pext_u32(bits as u32, (1 | (1 << 8) | (1 << 16)));
         let ptr = std::mem::transmute::<_, *const __m256i>(&LUT[0]);
         let carry = _mm256_load_si256(ptr.offset(index as isize));
         let result = _mm256_add_epi64(notv, carry);
@@ -1206,7 +1268,7 @@ pub unsafe fn negate_u256(value: U256) -> U256 {
         let all_ones = _mm_set_epi64x(-1, -1);
         let one = _mm_set_epi64x(0, 1);
         let max_u64 = _mm_sub_epi64(_mm_setzero_si128(), one);
-        let lane64_one = _mm_shuffle_epi32(one, _MM_SHUFFLE(1, 0, 1, 0)); // _mm_set_epi64x(1, 1);
+        let lane64_one = _mm_shuffle_epi32(one, _MM_SHUFFLE(1, 0, 1, 0));
         //
         let value = std::mem::transmute::<U256, (__m128i, __m128i)>(value);
         let notvlo = _mm_andnot_si128(value.0, all_ones);
@@ -1262,7 +1324,10 @@ pub unsafe fn opposite_signs_u256(a: U256, b: U256) -> U256 {
         let a = std::mem::transmute::<U256, (__m128i, __m128i)>(a);
         let b = std::mem::transmute::<U256, (__m128i, __m128i)>(b);
         let temp = _mm_xor_si128(a.1, b.1);
-        return is_neg_u256(std::mem::transmute::<(__m128i, __m128i), U256>((_mm_undefined_si128(), temp)));
+        return is_neg_u256(std::mem::transmute::<(__m128i, __m128i), U256>((
+            _mm_undefined_si128(),
+            temp,
+        )));
     }
     // generic target
     let temp = a.0[3] ^ b.0[3];
@@ -1306,23 +1371,15 @@ pub fn leading_zeros_u256(value: U256) -> usize {
     let mask3 = -((value.0[3] == 0) as i64) as u64;
     let mask2 = -((value.0[2] == 0) as i64) as u64;
     let mask1 = -((value.0[1] == 0) as i64) as u64;
-    let count =
-        (value.0[3].leading_zeros() as u64) +
-        (value.0[2].leading_zeros() as u64 & mask3) +
-        (value.0[1].leading_zeros() as u64 & mask3 & mask2) +
-        (value.0[0].leading_zeros() as u64 & mask3 & mask2 & mask1);
+    let count = (value.0[3].leading_zeros() as u64)
+        + (value.0[2].leading_zeros() as u64 & mask3)
+        + (value.0[1].leading_zeros() as u64 & mask3 & mask2)
+        + (value.0[0].leading_zeros() as u64 & mask3 & mask2 & mask1);
     return count as usize;
 }
 
 // Knuth's Algorithm D from Hacker's Delight
-pub unsafe fn divmnu(
-    u: *const u32,
-    v: *const u32,
-    m: isize,
-    n: isize,
-    q: *mut u32,
-    r: *mut u32)
-{
+pub unsafe fn divmnu(u: *const u32, v: *const u32, m: isize, n: isize, q: *mut u32, r: *mut u32) {
     debug_assert!(m <= 16);
     debug_assert!(n <= 8);
     let b: u64 = 1 << 32;
@@ -1332,7 +1389,7 @@ pub unsafe fn divmnu(
         }
         return;
     }
-    if n <= 0 || (*v.offset(n-1) == 0) {
+    if n <= 0 || (*v.offset(n - 1) == 0) {
         return;
     }
     if n == 1 {
@@ -1348,14 +1405,14 @@ pub unsafe fn divmnu(
         return;
     }
     //
-    debug_assert!(*v.offset(n-1) != 0);
-    let s = (*v.offset(n-1)).leading_zeros();
+    debug_assert!(*v.offset(n - 1) != 0);
+    let s = (*v.offset(n - 1)).leading_zeros();
     let mut undata: [u32; 16 + 1] = MaybeUninit::uninit().assume_init();
     let un = &mut undata[0] as *mut u32;
-    *un.offset(m) = (*u.offset(m-1) as u64 >> (32-s)) as u32;
+    *un.offset(m) = (*u.offset(m - 1) as u64 >> (32 - s)) as u32;
     let mut i = m - 1;
     while i > 0 {
-        *un.offset(i) = ((*u.offset(i) << s) as u64 | (*u.offset(i-1) as u64 >> (32-s))) as u32;
+        *un.offset(i) = ((*u.offset(i) << s) as u64 | (*u.offset(i - 1) as u64 >> (32 - s))) as u32;
         i -= 1;
     }
     *un = *u << s;
@@ -1363,7 +1420,7 @@ pub unsafe fn divmnu(
     let vn = &mut vndata[0] as *mut u32;
     let mut i = n - 1;
     while i > 0 {
-        *vn.offset(i) = ((*v.offset(i) << s) as u64 | (*v.offset(i-1) as u64 >> (32-s))) as u32;
+        *vn.offset(i) = ((*v.offset(i) << s) as u64 | (*v.offset(i - 1) as u64 >> (32 - s))) as u32;
         i -= 1;
     }
     *vn = *v << s;
@@ -1372,14 +1429,16 @@ pub unsafe fn divmnu(
     let mut rhat: u64 = MaybeUninit::uninit().assume_init();
     let mut j = m - n;
     while j >= 0 {
-        let temp0 = *un.offset(j+n) as u64 * b + *un.offset(j+n-1) as u64;
-        let temp1 = *vn.offset(n-1) as u64;
+        let temp0 = *un.offset(j + n) as u64 * b + *un.offset(j + n - 1) as u64;
+        let temp1 = *vn.offset(n - 1) as u64;
         qhat = temp0 / temp1;
         rhat = temp0 - qhat * temp1;
         loop {
-            if (qhat >= b) | ((qhat * *vn.offset(n-2) as u64) > (b * rhat + un.offset(j+n-2) as u64)) {
+            if (qhat >= b)
+                | ((qhat * *vn.offset(n - 2) as u64) > (b * rhat + un.offset(j + n - 2) as u64))
+            {
                 qhat -= 1;
-                rhat += *vn.offset(n-1) as u64;
+                rhat += *vn.offset(n - 1) as u64;
                 if rhat < b {
                     continue;
                 }
@@ -1391,31 +1450,32 @@ pub unsafe fn divmnu(
         for i in 0..n {
             let p = qhat * *vn.offset(i) as u64;
             t = {
-                let temp = (*un.offset(i+j) as u64).wrapping_sub(k);
+                let temp = (*un.offset(i + j) as u64).wrapping_sub(k);
                 temp.wrapping_sub(p & (u32::max_value() as u64))
             } as i64;
-            *un.offset(i+j) = t as u32;
+            *un.offset(i + j) = t as u32;
             k = (p >> 32).wrapping_sub((t >> 32) as u64);
         }
-        t = (*un.offset(j+n) as u64).wrapping_sub(k) as i64;
-        *un.offset(j+n) = t as u32;
+        t = (*un.offset(j + n) as u64).wrapping_sub(k) as i64;
+        *un.offset(j + n) = t as u32;
         //
         *q.offset(j) = qhat as u32;
         if t < 0 {
             *q.offset(j) = *q.offset(j) - 1;
             k = 0;
             for i in 0..n {
-                t = (*un.offset(i+j) as u64 + *vn.offset(i) as u64 + k) as i64;
-                *un.offset(i+j) = t as u32;
+                t = (*un.offset(i + j) as u64 + *vn.offset(i) as u64 + k) as i64;
+                *un.offset(i + j) = t as u32;
                 k = (t >> 32) as u64;
             }
-            *un.offset(j+n) = (*un.offset(j+n) as u64 + k) as u32;
+            *un.offset(j + n) = (*un.offset(j + n) as u64 + k) as u32;
         }
         //
-        for i in 0..n-1 {
-            *r.offset(i) = ((*un.offset(i) >> s) as u64 | ((*un.offset(i+1) as u64) << (32-s))) as u32;
+        for i in 0..n - 1 {
+            *r.offset(i) =
+                ((*un.offset(i) >> s) as u64 | ((*un.offset(i + 1) as u64) << (32 - s))) as u32;
         }
-        *r.offset(n-1) = *un.offset(n-1) >> s;
+        *r.offset(n - 1) = *un.offset(n - 1) >> s;
         j -= 1;
     }
 }
@@ -1510,7 +1570,7 @@ pub fn exp_u256(base: U256, exponent: U256, exponent_bits: usize) -> U256 {
     let mut acc = base;
     let mut i = 0;
     loop {
-        let bit_on = exponent.0[i/64] & (1 << (i%64));
+        let bit_on = exponent.0[i / 64] & (1 << (i % 64));
         if bit_on > 0 {
             result = mul_u256(result, acc);
         }
@@ -1559,46 +1619,48 @@ fn andn_u64(a: u64, b: u64) -> u64 {
 // From Markku-Juhani O. Saarinen
 fn keccakf1600(state: &mut [u64; 25]) {
     const KECCAKF_RNDC: [u64; 24] = [
-        0x0000000000000001, 0x0000000000008082, 0x800000000000808a,
-        0x8000000080008000, 0x000000000000808b, 0x0000000080000001,
-        0x8000000080008081, 0x8000000000008009, 0x000000000000008a,
-        0x0000000000000088, 0x0000000080008009, 0x000000008000000a,
-        0x000000008000808b, 0x800000000000008b, 0x8000000000008089,
-        0x8000000000008003, 0x8000000000008002, 0x8000000000000080,
-        0x000000000000800a, 0x800000008000000a, 0x8000000080008081,
-        0x8000000000008080, 0x0000000080000001, 0x8000000080008008
+        0x0000000000000001,
+        0x0000000000008082,
+        0x800000000000808a,
+        0x8000000080008000,
+        0x000000000000808b,
+        0x0000000080000001,
+        0x8000000080008081,
+        0x8000000000008009,
+        0x000000000000008a,
+        0x0000000000000088,
+        0x0000000080008009,
+        0x000000008000000a,
+        0x000000008000808b,
+        0x800000000000008b,
+        0x8000000000008089,
+        0x8000000000008003,
+        0x8000000000008002,
+        0x8000000000000080,
+        0x000000000000800a,
+        0x800000008000000a,
+        0x8000000080008081,
+        0x8000000000008080,
+        0x0000000080000001,
+        0x8000000080008008,
     ];
     const KECCAKF_ROTC: [u64; 24] = [
-        1, 3, 6,
-        10, 15, 21,
-        28, 36, 45,
-        55, 2, 14,
-        27, 41, 56,
-        8, 25, 43,
-        62, 18, 39,
-        61, 20, 44
+        1, 3, 6, 10, 15, 21, 28, 36, 45, 55, 2, 14, 27, 41, 56, 8, 25, 43, 62, 18, 39, 61, 20, 44,
     ];
     const KECCAKF_PILN: [usize; 24] = [
-        10, 7, 11,
-        17, 18, 3,
-        5, 16, 8,
-        21, 24, 4,
-        15, 23, 19,
-        13, 12, 2,
-        20, 14, 22,
-        9, 6, 1
+        10, 7, 11, 17, 18, 3, 5, 16, 8, 21, 24, 4, 15, 23, 19, 13, 12, 2, 20, 14, 22, 9, 6, 1,
     ];
     let mut bc: [u64; 5] = unsafe { MaybeUninit::uninit().assume_init() };
     for r in 0..24 {
         // theta
         for i in 0..5 {
-            bc[i] = state[i] ^ state[i+5] ^ state[i+10] ^ state[i+15] ^ state[i+20];
+            bc[i] = state[i] ^ state[i + 5] ^ state[i + 10] ^ state[i + 15] ^ state[i + 20];
         }
         for i in 0..5 {
             let t = bc[(i + 4) % 5] ^ rol_u64(bc[(i + 1) % 5], 1);
             for j in 0..5 {
                 let j = j * 5;
-                state[j+i] ^= t;
+                state[j + i] ^= t;
             }
         }
         // rho and pi
@@ -1619,10 +1681,10 @@ fn keccakf1600(state: &mut [u64; 25]) {
         for j in 0..5 {
             let j = j * 5;
             for i in 0..5 {
-                bc[i] = state[j+i];
+                bc[i] = state[j + i];
             }
             for i in 0..5 {
-                state[j+i] ^= andn_u64(bc[(i + 1) % 5], bc[(i + 2) % 5]);
+                state[j + i] ^= andn_u64(bc[(i + 1) % 5], bc[(i + 2) % 5]);
             }
         }
         // iota
@@ -1636,7 +1698,7 @@ pub unsafe fn keccak256(input: *const u8, size: usize) -> U256 {
     let mut size = size;
     let mut state: [u64; 25] = [0; 25];
     while size >= RATE {
-        for i in 0..(RATE/8) {
+        for i in 0..(RATE / 8) {
             state[i] ^= *(input as *const u64).offset(i as isize);
         }
         keccakf1600(&mut state);
@@ -1649,9 +1711,9 @@ pub unsafe fn keccak256(input: *const u8, size: usize) -> U256 {
         *ptr.offset(i as isize) = *input.offset(i as isize);
     }
     temp[size] = 0x01;
-    temp[RATE-1] |= 0x80;
+    temp[RATE - 1] |= 0x80;
     let ptr = temp.as_mut_ptr() as *const u64;
-    for i in 0..(RATE/8) {
+    for i in 0..(RATE / 8) {
         state[i] ^= *ptr.offset(i as isize);
     }
     keccakf1600(&mut state);
@@ -1671,16 +1733,14 @@ unsafe fn mm_extract_epi64(a: __m128i, imm8: i32) -> i64 {
     {
         if imm8 == 0 {
             return _mm_extract_epi64(a, 0);
-        }
-        else if imm8 == 1 {
+        } else if imm8 == 1 {
             return _mm_extract_epi64(a, 1);
         }
         return unreachable!();
     }
     if imm8 == 0 {
         return _mm_cvtsi128_si64(a);
-    }
-    else if imm8 == 1 {
+    } else if imm8 == 1 {
         return _mm_cvtsi128_si64(_mm_srli_si128(a, 8));
     }
     unreachable!()
@@ -1700,70 +1760,169 @@ fn assert_word_eq(a: (__m128i, __m128i), b: (__m128i, __m128i)) {
 #[test]
 fn test_bshl_ssse3() {
     unsafe {
-        let i = (_mm_set_epi64x(0xc0c1c2c3c4c5c6c7u64 as i64, 0xd0d1d2d3d4d5d6d7u64 as i64), _mm_set_epi64x(0xa0a1a2a3a4a5a6a7u64 as i64, 0xb0b1b2b3b4b5b6b7u64 as i64));
-        let o = (_mm_set_epi64x(0xc0c1c2c3c4c5c6c7u64 as i64, 0xd0d1d2d3d4d5d6d7u64 as i64), _mm_set_epi64x(0xa0a1a2a3a4a5a6a7u64 as i64, 0xb0b1b2b3b4b5b6b7u64 as i64));
+        let i = (
+            _mm_set_epi64x(0xc0c1c2c3c4c5c6c7u64 as i64, 0xd0d1d2d3d4d5d6d7u64 as i64),
+            _mm_set_epi64x(0xa0a1a2a3a4a5a6a7u64 as i64, 0xb0b1b2b3b4b5b6b7u64 as i64),
+        );
+        let o = (
+            _mm_set_epi64x(0xc0c1c2c3c4c5c6c7u64 as i64, 0xd0d1d2d3d4d5d6d7u64 as i64),
+            _mm_set_epi64x(0xa0a1a2a3a4a5a6a7u64 as i64, 0xb0b1b2b3b4b5b6b7u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 0)), o);
-        let o = (_mm_set_epi64x(0xc1c2c3c4c5c6c7d0u64 as i64, 0xd1d2d3d4d5d6d700u64 as i64), _mm_set_epi64x(0xa1a2a3a4a5a6a7b0u64 as i64, 0xb1b2b3b4b5b6b7c0u64 as i64));
+        let o = (
+            _mm_set_epi64x(0xc1c2c3c4c5c6c7d0u64 as i64, 0xd1d2d3d4d5d6d700u64 as i64),
+            _mm_set_epi64x(0xa1a2a3a4a5a6a7b0u64 as i64, 0xb1b2b3b4b5b6b7c0u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 1)), o);
-        let o = (_mm_set_epi64x(0xc2c3c4c5c6c7d0d1u64 as i64, 0xd2d3d4d5d6d70000u64 as i64), _mm_set_epi64x(0xa2a3a4a5a6a7b0b1u64 as i64, 0xb2b3b4b5b6b7c0c1u64 as i64));
+        let o = (
+            _mm_set_epi64x(0xc2c3c4c5c6c7d0d1u64 as i64, 0xd2d3d4d5d6d70000u64 as i64),
+            _mm_set_epi64x(0xa2a3a4a5a6a7b0b1u64 as i64, 0xb2b3b4b5b6b7c0c1u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 2)), o);
-        let o = (_mm_set_epi64x(0xc3c4c5c6c7d0d1d2u64 as i64, 0xd3d4d5d6d7000000u64 as i64), _mm_set_epi64x(0xa3a4a5a6a7b0b1b2u64 as i64, 0xb3b4b5b6b7c0c1c2u64 as i64));
+        let o = (
+            _mm_set_epi64x(0xc3c4c5c6c7d0d1d2u64 as i64, 0xd3d4d5d6d7000000u64 as i64),
+            _mm_set_epi64x(0xa3a4a5a6a7b0b1b2u64 as i64, 0xb3b4b5b6b7c0c1c2u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 3)), o);
-        let o = (_mm_set_epi64x(0xc4c5c6c7d0d1d2d3u64 as i64, 0xd4d5d6d700000000u64 as i64), _mm_set_epi64x(0xa4a5a6a7b0b1b2b3u64 as i64, 0xb4b5b6b7c0c1c2c3u64 as i64));
+        let o = (
+            _mm_set_epi64x(0xc4c5c6c7d0d1d2d3u64 as i64, 0xd4d5d6d700000000u64 as i64),
+            _mm_set_epi64x(0xa4a5a6a7b0b1b2b3u64 as i64, 0xb4b5b6b7c0c1c2c3u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 4)), o);
-        let o = (_mm_set_epi64x(0xc5c6c7d0d1d2d3d4u64 as i64, 0xd5d6d70000000000u64 as i64), _mm_set_epi64x(0xa5a6a7b0b1b2b3b4u64 as i64, 0xb5b6b7c0c1c2c3c4u64 as i64));
+        let o = (
+            _mm_set_epi64x(0xc5c6c7d0d1d2d3d4u64 as i64, 0xd5d6d70000000000u64 as i64),
+            _mm_set_epi64x(0xa5a6a7b0b1b2b3b4u64 as i64, 0xb5b6b7c0c1c2c3c4u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 5)), o);
-        let o = (_mm_set_epi64x(0xc6c7d0d1d2d3d4d5u64 as i64, 0xd6d7000000000000u64 as i64), _mm_set_epi64x(0xa6a7b0b1b2b3b4b5u64 as i64, 0xb6b7c0c1c2c3c4c5u64 as i64));
+        let o = (
+            _mm_set_epi64x(0xc6c7d0d1d2d3d4d5u64 as i64, 0xd6d7000000000000u64 as i64),
+            _mm_set_epi64x(0xa6a7b0b1b2b3b4b5u64 as i64, 0xb6b7c0c1c2c3c4c5u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 6)), o);
-        let o = (_mm_set_epi64x(0xc7d0d1d2d3d4d5d6u64 as i64, 0xd700000000000000u64 as i64), _mm_set_epi64x(0xa7b0b1b2b3b4b5b6u64 as i64, 0xb7c0c1c2c3c4c5c6u64 as i64));
+        let o = (
+            _mm_set_epi64x(0xc7d0d1d2d3d4d5d6u64 as i64, 0xd700000000000000u64 as i64),
+            _mm_set_epi64x(0xa7b0b1b2b3b4b5b6u64 as i64, 0xb7c0c1c2c3c4c5c6u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 7)), o);
-        let o = (_mm_set_epi64x(0xd0d1d2d3d4d5d6d7u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xb0b1b2b3b4b5b6b7u64 as i64, 0xc0c1c2c3c4c5c6c7u64 as i64));
+        let o = (
+            _mm_set_epi64x(0xd0d1d2d3d4d5d6d7u64 as i64, 0x0000000000000000u64 as i64),
+            _mm_set_epi64x(0xb0b1b2b3b4b5b6b7u64 as i64, 0xc0c1c2c3c4c5c6c7u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 8)), o);
-        let o = (_mm_set_epi64x(0xd1d2d3d4d5d6d700u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xb1b2b3b4b5b6b7c0u64 as i64, 0xc1c2c3c4c5c6c7d0u64 as i64));
+        let o = (
+            _mm_set_epi64x(0xd1d2d3d4d5d6d700u64 as i64, 0x0000000000000000u64 as i64),
+            _mm_set_epi64x(0xb1b2b3b4b5b6b7c0u64 as i64, 0xc1c2c3c4c5c6c7d0u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 9)), o);
-        let o = (_mm_set_epi64x(0xd2d3d4d5d6d70000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xb2b3b4b5b6b7c0c1u64 as i64, 0xc2c3c4c5c6c7d0d1u64 as i64));
+        let o = (
+            _mm_set_epi64x(0xd2d3d4d5d6d70000u64 as i64, 0x0000000000000000u64 as i64),
+            _mm_set_epi64x(0xb2b3b4b5b6b7c0c1u64 as i64, 0xc2c3c4c5c6c7d0d1u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 10)), o);
-        let o = (_mm_set_epi64x(0xd3d4d5d6d7000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xb3b4b5b6b7c0c1c2u64 as i64, 0xc3c4c5c6c7d0d1d2u64 as i64));
+        let o = (
+            _mm_set_epi64x(0xd3d4d5d6d7000000u64 as i64, 0x0000000000000000u64 as i64),
+            _mm_set_epi64x(0xb3b4b5b6b7c0c1c2u64 as i64, 0xc3c4c5c6c7d0d1d2u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 11)), o);
-        let o = (_mm_set_epi64x(0xd4d5d6d700000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xb4b5b6b7c0c1c2c3u64 as i64, 0xc4c5c6c7d0d1d2d3u64 as i64));
+        let o = (
+            _mm_set_epi64x(0xd4d5d6d700000000u64 as i64, 0x0000000000000000u64 as i64),
+            _mm_set_epi64x(0xb4b5b6b7c0c1c2c3u64 as i64, 0xc4c5c6c7d0d1d2d3u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 12)), o);
-        let o = (_mm_set_epi64x(0xd5d6d70000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xb5b6b7c0c1c2c3c4u64 as i64, 0xc5c6c7d0d1d2d3d4u64 as i64));
+        let o = (
+            _mm_set_epi64x(0xd5d6d70000000000u64 as i64, 0x0000000000000000u64 as i64),
+            _mm_set_epi64x(0xb5b6b7c0c1c2c3c4u64 as i64, 0xc5c6c7d0d1d2d3d4u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 13)), o);
-        let o = (_mm_set_epi64x(0xd6d7000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xb6b7c0c1c2c3c4c5u64 as i64, 0xc6c7d0d1d2d3d4d5u64 as i64));
+        let o = (
+            _mm_set_epi64x(0xd6d7000000000000u64 as i64, 0x0000000000000000u64 as i64),
+            _mm_set_epi64x(0xb6b7c0c1c2c3c4c5u64 as i64, 0xc6c7d0d1d2d3d4d5u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 14)), o);
-        let o = (_mm_set_epi64x(0xd700000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xb7c0c1c2c3c4c5c6u64 as i64, 0xc7d0d1d2d3d4d5d6u64 as i64));
+        let o = (
+            _mm_set_epi64x(0xd700000000000000u64 as i64, 0x0000000000000000u64 as i64),
+            _mm_set_epi64x(0xb7c0c1c2c3c4c5c6u64 as i64, 0xc7d0d1d2d3d4d5d6u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 15)), o);
-        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xc0c1c2c3c4c5c6c7u64 as i64, 0xd0d1d2d3d4d5d6d7u64 as i64));
+        let o = (
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+            _mm_set_epi64x(0xc0c1c2c3c4c5c6c7u64 as i64, 0xd0d1d2d3d4d5d6d7u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 16)), o);
-        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xc1c2c3c4c5c6c7d0u64 as i64, 0xd1d2d3d4d5d6d700u64 as i64));
+        let o = (
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+            _mm_set_epi64x(0xc1c2c3c4c5c6c7d0u64 as i64, 0xd1d2d3d4d5d6d700u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 17)), o);
-        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xc2c3c4c5c6c7d0d1u64 as i64, 0xd2d3d4d5d6d70000u64 as i64));
+        let o = (
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+            _mm_set_epi64x(0xc2c3c4c5c6c7d0d1u64 as i64, 0xd2d3d4d5d6d70000u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 18)), o);
-        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xc3c4c5c6c7d0d1d2u64 as i64, 0xd3d4d5d6d7000000u64 as i64));
+        let o = (
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+            _mm_set_epi64x(0xc3c4c5c6c7d0d1d2u64 as i64, 0xd3d4d5d6d7000000u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 19)), o);
-        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xc4c5c6c7d0d1d2d3u64 as i64, 0xd4d5d6d700000000u64 as i64));
+        let o = (
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+            _mm_set_epi64x(0xc4c5c6c7d0d1d2d3u64 as i64, 0xd4d5d6d700000000u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 20)), o);
-        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xc5c6c7d0d1d2d3d4u64 as i64, 0xd5d6d70000000000u64 as i64));
+        let o = (
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+            _mm_set_epi64x(0xc5c6c7d0d1d2d3d4u64 as i64, 0xd5d6d70000000000u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 21)), o);
-        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xc6c7d0d1d2d3d4d5u64 as i64, 0xd6d7000000000000u64 as i64));
+        let o = (
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+            _mm_set_epi64x(0xc6c7d0d1d2d3d4d5u64 as i64, 0xd6d7000000000000u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 22)), o);
-        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xc7d0d1d2d3d4d5d6u64 as i64, 0xd700000000000000u64 as i64));
+        let o = (
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+            _mm_set_epi64x(0xc7d0d1d2d3d4d5d6u64 as i64, 0xd700000000000000u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 23)), o);
-        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xd0d1d2d3d4d5d6d7u64 as i64, 0x0000000000000000u64 as i64));
+        let o = (
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+            _mm_set_epi64x(0xd0d1d2d3d4d5d6d7u64 as i64, 0x0000000000000000u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 24)), o);
-        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xd1d2d3d4d5d6d700u64 as i64, 0x0000000000000000u64 as i64));
+        let o = (
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+            _mm_set_epi64x(0xd1d2d3d4d5d6d700u64 as i64, 0x0000000000000000u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 25)), o);
-        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xd2d3d4d5d6d70000u64 as i64, 0x0000000000000000u64 as i64));
+        let o = (
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+            _mm_set_epi64x(0xd2d3d4d5d6d70000u64 as i64, 0x0000000000000000u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 26)), o);
-        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xd3d4d5d6d7000000u64 as i64, 0x0000000000000000u64 as i64));
+        let o = (
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+            _mm_set_epi64x(0xd3d4d5d6d7000000u64 as i64, 0x0000000000000000u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 27)), o);
-        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xd4d5d6d700000000u64 as i64, 0x0000000000000000u64 as i64));
+        let o = (
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+            _mm_set_epi64x(0xd4d5d6d700000000u64 as i64, 0x0000000000000000u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 28)), o);
-        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xd5d6d70000000000u64 as i64, 0x0000000000000000u64 as i64));
+        let o = (
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+            _mm_set_epi64x(0xd5d6d70000000000u64 as i64, 0x0000000000000000u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 29)), o);
-        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xd6d7000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        let o = (
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+            _mm_set_epi64x(0xd6d7000000000000u64 as i64, 0x0000000000000000u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 30)), o);
-        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64), _mm_set_epi64x(0xd700000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        let o = (
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+            _mm_set_epi64x(0xd700000000000000u64 as i64, 0x0000000000000000u64 as i64),
+        );
         assert_word_eq(bshl_ssse3(i, _mm_set_epi64x(0, 31)), o);
     }
 }
@@ -1772,70 +1931,169 @@ fn test_bshl_ssse3() {
 #[test]
 fn test_bshr_ssse3() {
     unsafe {
-        let i = (_mm_set_epi64x(0xc0c1c2c3c4c5c6c7u64 as i64, 0xd0d1d2d3d4d5d6d7u64 as i64), _mm_set_epi64x(0xa0a1a2a3a4a5a6a7u64 as i64, 0xb0b1b2b3b4b5b6b7u64 as i64));
-        let o = (_mm_set_epi64x(0xc0c1c2c3c4c5c6c7u64 as i64, 0xd0d1d2d3d4d5d6d7u64 as i64), _mm_set_epi64x(0xa0a1a2a3a4a5a6a7u64 as i64, 0xb0b1b2b3b4b5b6b7u64 as i64));
+        let i = (
+            _mm_set_epi64x(0xc0c1c2c3c4c5c6c7u64 as i64, 0xd0d1d2d3d4d5d6d7u64 as i64),
+            _mm_set_epi64x(0xa0a1a2a3a4a5a6a7u64 as i64, 0xb0b1b2b3b4b5b6b7u64 as i64),
+        );
+        let o = (
+            _mm_set_epi64x(0xc0c1c2c3c4c5c6c7u64 as i64, 0xd0d1d2d3d4d5d6d7u64 as i64),
+            _mm_set_epi64x(0xa0a1a2a3a4a5a6a7u64 as i64, 0xb0b1b2b3b4b5b6b7u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 0)), o);
-        let o = (_mm_set_epi64x(0xb7c0c1c2c3c4c5c6u64 as i64, 0xc7d0d1d2d3d4d5d6u64 as i64), _mm_set_epi64x(0x00a0a1a2a3a4a5a6u64 as i64, 0xa7b0b1b2b3b4b5b6u64 as i64));
+        let o = (
+            _mm_set_epi64x(0xb7c0c1c2c3c4c5c6u64 as i64, 0xc7d0d1d2d3d4d5d6u64 as i64),
+            _mm_set_epi64x(0x00a0a1a2a3a4a5a6u64 as i64, 0xa7b0b1b2b3b4b5b6u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 1)), o);
-        let o = (_mm_set_epi64x(0xb6b7c0c1c2c3c4c5u64 as i64, 0xc6c7d0d1d2d3d4d5u64 as i64), _mm_set_epi64x(0x0000a0a1a2a3a4a5u64 as i64, 0xa6a7b0b1b2b3b4b5u64 as i64));
+        let o = (
+            _mm_set_epi64x(0xb6b7c0c1c2c3c4c5u64 as i64, 0xc6c7d0d1d2d3d4d5u64 as i64),
+            _mm_set_epi64x(0x0000a0a1a2a3a4a5u64 as i64, 0xa6a7b0b1b2b3b4b5u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 2)), o);
-        let o = (_mm_set_epi64x(0xb5b6b7c0c1c2c3c4u64 as i64, 0xc5c6c7d0d1d2d3d4u64 as i64), _mm_set_epi64x(0x000000a0a1a2a3a4u64 as i64, 0xa5a6a7b0b1b2b3b4u64 as i64));
+        let o = (
+            _mm_set_epi64x(0xb5b6b7c0c1c2c3c4u64 as i64, 0xc5c6c7d0d1d2d3d4u64 as i64),
+            _mm_set_epi64x(0x000000a0a1a2a3a4u64 as i64, 0xa5a6a7b0b1b2b3b4u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 3)), o);
-        let o = (_mm_set_epi64x(0xb4b5b6b7c0c1c2c3u64 as i64, 0xc4c5c6c7d0d1d2d3u64 as i64), _mm_set_epi64x(0x00000000a0a1a2a3u64 as i64, 0xa4a5a6a7b0b1b2b3u64 as i64));
+        let o = (
+            _mm_set_epi64x(0xb4b5b6b7c0c1c2c3u64 as i64, 0xc4c5c6c7d0d1d2d3u64 as i64),
+            _mm_set_epi64x(0x00000000a0a1a2a3u64 as i64, 0xa4a5a6a7b0b1b2b3u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 4)), o);
-        let o = (_mm_set_epi64x(0xb3b4b5b6b7c0c1c2u64 as i64, 0xc3c4c5c6c7d0d1d2u64 as i64), _mm_set_epi64x(0x0000000000a0a1a2u64 as i64, 0xa3a4a5a6a7b0b1b2u64 as i64));
+        let o = (
+            _mm_set_epi64x(0xb3b4b5b6b7c0c1c2u64 as i64, 0xc3c4c5c6c7d0d1d2u64 as i64),
+            _mm_set_epi64x(0x0000000000a0a1a2u64 as i64, 0xa3a4a5a6a7b0b1b2u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 5)), o);
-        let o = (_mm_set_epi64x(0xb2b3b4b5b6b7c0c1u64 as i64, 0xc2c3c4c5c6c7d0d1u64 as i64), _mm_set_epi64x(0x000000000000a0a1u64 as i64, 0xa2a3a4a5a6a7b0b1u64 as i64));
+        let o = (
+            _mm_set_epi64x(0xb2b3b4b5b6b7c0c1u64 as i64, 0xc2c3c4c5c6c7d0d1u64 as i64),
+            _mm_set_epi64x(0x000000000000a0a1u64 as i64, 0xa2a3a4a5a6a7b0b1u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 6)), o);
-        let o = (_mm_set_epi64x(0xb1b2b3b4b5b6b7c0u64 as i64, 0xc1c2c3c4c5c6c7d0u64 as i64), _mm_set_epi64x(0x00000000000000a0u64 as i64, 0xa1a2a3a4a5a6a7b0u64 as i64));
+        let o = (
+            _mm_set_epi64x(0xb1b2b3b4b5b6b7c0u64 as i64, 0xc1c2c3c4c5c6c7d0u64 as i64),
+            _mm_set_epi64x(0x00000000000000a0u64 as i64, 0xa1a2a3a4a5a6a7b0u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 7)), o);
-        let o = (_mm_set_epi64x(0xb0b1b2b3b4b5b6b7u64 as i64, 0xc0c1c2c3c4c5c6c7u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0xa0a1a2a3a4a5a6a7u64 as i64));
+        let o = (
+            _mm_set_epi64x(0xb0b1b2b3b4b5b6b7u64 as i64, 0xc0c1c2c3c4c5c6c7u64 as i64),
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0xa0a1a2a3a4a5a6a7u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 8)), o);
-        let o = (_mm_set_epi64x(0xa7b0b1b2b3b4b5b6u64 as i64, 0xb7c0c1c2c3c4c5c6u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x00a0a1a2a3a4a5a6u64 as i64));
+        let o = (
+            _mm_set_epi64x(0xa7b0b1b2b3b4b5b6u64 as i64, 0xb7c0c1c2c3c4c5c6u64 as i64),
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x00a0a1a2a3a4a5a6u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 9)), o);
-        let o = (_mm_set_epi64x(0xa6a7b0b1b2b3b4b5u64 as i64, 0xb6b7c0c1c2c3c4c5u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000a0a1a2a3a4a5u64 as i64));
+        let o = (
+            _mm_set_epi64x(0xa6a7b0b1b2b3b4b5u64 as i64, 0xb6b7c0c1c2c3c4c5u64 as i64),
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000a0a1a2a3a4a5u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 10)), o);
-        let o = (_mm_set_epi64x(0xa5a6a7b0b1b2b3b4u64 as i64, 0xb5b6b7c0c1c2c3c4u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x000000a0a1a2a3a4u64 as i64));
+        let o = (
+            _mm_set_epi64x(0xa5a6a7b0b1b2b3b4u64 as i64, 0xb5b6b7c0c1c2c3c4u64 as i64),
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x000000a0a1a2a3a4u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 11)), o);
-        let o = (_mm_set_epi64x(0xa4a5a6a7b0b1b2b3u64 as i64, 0xb4b5b6b7c0c1c2c3u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x00000000a0a1a2a3u64 as i64));
+        let o = (
+            _mm_set_epi64x(0xa4a5a6a7b0b1b2b3u64 as i64, 0xb4b5b6b7c0c1c2c3u64 as i64),
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x00000000a0a1a2a3u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 12)), o);
-        let o = (_mm_set_epi64x(0xa3a4a5a6a7b0b1b2u64 as i64, 0xb3b4b5b6b7c0c1c2u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000a0a1a2u64 as i64));
+        let o = (
+            _mm_set_epi64x(0xa3a4a5a6a7b0b1b2u64 as i64, 0xb3b4b5b6b7c0c1c2u64 as i64),
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000a0a1a2u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 13)), o);
-        let o = (_mm_set_epi64x(0xa2a3a4a5a6a7b0b1u64 as i64, 0xb2b3b4b5b6b7c0c1u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x000000000000a0a1u64 as i64));
+        let o = (
+            _mm_set_epi64x(0xa2a3a4a5a6a7b0b1u64 as i64, 0xb2b3b4b5b6b7c0c1u64 as i64),
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x000000000000a0a1u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 14)), o);
-        let o = (_mm_set_epi64x(0xa1a2a3a4a5a6a7b0u64 as i64, 0xb1b2b3b4b5b6b7c0u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x00000000000000a0u64 as i64));
+        let o = (
+            _mm_set_epi64x(0xa1a2a3a4a5a6a7b0u64 as i64, 0xb1b2b3b4b5b6b7c0u64 as i64),
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x00000000000000a0u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 15)), o);
-        let o = (_mm_set_epi64x(0xa0a1a2a3a4a5a6a7u64 as i64, 0xb0b1b2b3b4b5b6b7u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        let o = (
+            _mm_set_epi64x(0xa0a1a2a3a4a5a6a7u64 as i64, 0xb0b1b2b3b4b5b6b7u64 as i64),
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 16)), o);
-        let o = (_mm_set_epi64x(0x00a0a1a2a3a4a5a6u64 as i64, 0xa7b0b1b2b3b4b5b6u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        let o = (
+            _mm_set_epi64x(0x00a0a1a2a3a4a5a6u64 as i64, 0xa7b0b1b2b3b4b5b6u64 as i64),
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 17)), o);
-        let o = (_mm_set_epi64x(0x0000a0a1a2a3a4a5u64 as i64, 0xa6a7b0b1b2b3b4b5u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        let o = (
+            _mm_set_epi64x(0x0000a0a1a2a3a4a5u64 as i64, 0xa6a7b0b1b2b3b4b5u64 as i64),
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 18)), o);
-        let o = (_mm_set_epi64x(0x000000a0a1a2a3a4u64 as i64, 0xa5a6a7b0b1b2b3b4u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        let o = (
+            _mm_set_epi64x(0x000000a0a1a2a3a4u64 as i64, 0xa5a6a7b0b1b2b3b4u64 as i64),
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 19)), o);
-        let o = (_mm_set_epi64x(0x00000000a0a1a2a3u64 as i64, 0xa4a5a6a7b0b1b2b3u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        let o = (
+            _mm_set_epi64x(0x00000000a0a1a2a3u64 as i64, 0xa4a5a6a7b0b1b2b3u64 as i64),
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 20)), o);
-        let o = (_mm_set_epi64x(0x0000000000a0a1a2u64 as i64, 0xa3a4a5a6a7b0b1b2u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        let o = (
+            _mm_set_epi64x(0x0000000000a0a1a2u64 as i64, 0xa3a4a5a6a7b0b1b2u64 as i64),
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 21)), o);
-        let o = (_mm_set_epi64x(0x000000000000a0a1u64 as i64, 0xa2a3a4a5a6a7b0b1u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        let o = (
+            _mm_set_epi64x(0x000000000000a0a1u64 as i64, 0xa2a3a4a5a6a7b0b1u64 as i64),
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 22)), o);
-        let o = (_mm_set_epi64x(0x00000000000000a0u64 as i64, 0xa1a2a3a4a5a6a7b0u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        let o = (
+            _mm_set_epi64x(0x00000000000000a0u64 as i64, 0xa1a2a3a4a5a6a7b0u64 as i64),
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 23)), o);
-        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0xa0a1a2a3a4a5a6a7u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        let o = (
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0xa0a1a2a3a4a5a6a7u64 as i64),
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 24)), o);
-        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x00a0a1a2a3a4a5a6u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        let o = (
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x00a0a1a2a3a4a5a6u64 as i64),
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 25)), o);
-        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000a0a1a2a3a4a5u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        let o = (
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000a0a1a2a3a4a5u64 as i64),
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 26)), o);
-        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x000000a0a1a2a3a4u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        let o = (
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x000000a0a1a2a3a4u64 as i64),
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 27)), o);
-        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x00000000a0a1a2a3u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        let o = (
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x00000000a0a1a2a3u64 as i64),
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 28)), o);
-        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000a0a1a2u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        let o = (
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000a0a1a2u64 as i64),
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 29)), o);
-        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x000000000000a0a1u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        let o = (
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x000000000000a0a1u64 as i64),
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 30)), o);
-        let o = (_mm_set_epi64x(0x0000000000000000u64 as i64, 0x00000000000000a0u64 as i64), _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64));
+        let o = (
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x00000000000000a0u64 as i64),
+            _mm_set_epi64x(0x0000000000000000u64 as i64, 0x0000000000000000u64 as i64),
+        );
         assert_word_eq(bshr_ssse3(i, _mm_set_epi64x(0, 31)), o);
     }
 }
