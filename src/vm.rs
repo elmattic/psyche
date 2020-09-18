@@ -475,12 +475,9 @@ pub unsafe fn run_evm(bytecode: &[u8], rom: &VmRom, schedule: &Schedule, gas_lim
             }
             Opcode::SIGNEXTEND => {
                 comment!("opSIGNEXTEND");
-                let offset = *(stack.sp as *const u32) % 32;
-                let offset = offset as isize;
-                let value = *((stack.sp.offset(-1) as *const u8).offset(offset));
                 let a = stack.pop();
                 let b = stack.pop();
-                let result = signextend_u256(a, b, value);
+                let result = signextend_u256(a, b);
                 stack.push(result);
                 //
                 pc += 1;

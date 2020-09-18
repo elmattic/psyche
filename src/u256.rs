@@ -462,24 +462,24 @@ fn clamp_i32(value: i32, min: i32, max: i32) -> i32 {
 }
 
 #[allow(unreachable_code)]
-pub unsafe fn signextend_u256(a: U256, b: U256, value: u8) -> U256 {
+pub unsafe fn signextend_u256(a: U256, b: U256) -> U256 {
     #[cfg(target_feature = "avx2")]
     {
-        let one = _mm256_set_epi64x(0, 0, 0, 1);
-        let lane8_id = _mm256_set_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31);
-        let all_ones = _mm256_set_epi64x(-1, -1, -1, -1);
+        const SWAP_LANE128: i32 = (1 << 0) + (0 << 4);
+        let lane8_rev_id = _mm256_set_epi8(31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
         //
         let _a = std::mem::transmute::<U256, __m256i>(a);
         let _b = std::mem::transmute::<U256, __m256i>(b);
-        let signbit = _mm_srli_epi16(_mm_set_epi64x(0, value as i64), 7);
-        let signmask8 = _mm_cmpeq_epi8(signbit, _mm256_castsi256_si128(one));
-        let signmask = _mm256_broadcastb_epi8(signmask8);
         let alo = _mm256_castsi256_si128(_a);
-        let sfloor = _mm_add_epi8(_mm_set_epi64x(0, 255 - 31), alo);
-        let floor = _mm256_broadcastb_epi8(sfloor);
-        let ssum = _mm256_adds_epu8(lane8_id, floor);
-        let mask = _mm256_cmpeq_epi8(ssum, all_ones);
-        let temp = _mm256_blendv_epi8(signmask, _b, mask);
+        let alob = _mm256_broadcastb_epi8(alo);
+        let bmask = _mm256_cmpeq_epi8(lane8_rev_id, alob);
+        let bsel = _mm256_and_si256(bmask, _b);
+        let isneg = _mm256_cmpgt_epi8(_mm256_setzero_si256(), bsel);
+        let x = _mm256_shuffle_epi8(isneg, alob);
+        let px = _mm256_permute2x128_si256(x, x, SWAP_LANE128);
+        let signmask = _mm256_or_si256(x, px);
+        let mask = _mm256_cmpgt_epi8(lane8_rev_id, alob);
+        let temp = _mm256_blendv_epi8(_b, signmask, mask);
         let lt32 = broadcast_avx2(is_ltpow2_u256(a, 32));
         let result = _mm256_blendv_epi8(_b, temp, lt32);
         return std::mem::transmute::<__m256i, U256>(result);
@@ -487,25 +487,25 @@ pub unsafe fn signextend_u256(a: U256, b: U256, value: u8) -> U256 {
     #[cfg(target_feature = "ssse3")]
     {
         let zero = _mm_setzero_si128();
-        let one = _mm_set_epi64x(0, 1);
-        let lane8_id = _mm_set_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
-        let all_ones = _mm_set_epi64x(-1, -1);
+        let lane8_rev_id_lo = _mm_set_epi8(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
+        let lane8_rev_id_hi = _mm_set_epi8(31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16);
         //
         let _a = std::mem::transmute::<U256, (__m128i, __m128i)>(a);
         let _b = std::mem::transmute::<U256, (__m128i, __m128i)>(b);
-        let signbit = _mm_srli_epi16(_mm_set_epi64x(0, value as i64), 7);
-        let signmask8 = _mm_cmpeq_epi8(signbit, one);
-        let signmask = _mm_shuffle_epi8(signmask8, zero);
-        let sfloorlo = _mm_adds_epu8(_mm_set_epi64x(0, 255 - 15), _a.0);
-        let floorlo = _mm_shuffle_epi8(sfloorlo, zero);
-        let ssumlo = _mm_adds_epu8(lane8_id, floorlo);
-        let masklo = _mm_cmpeq_epi8(ssumlo, all_ones);
-        let templo = mm_blendv_epi8(signmask, _b.0, masklo);
-        let sfloorhi = _mm_add_epi8(_mm_set_epi64x(0, 255 - 31), _a.0);
-        let floorhi = _mm_shuffle_epi8(sfloorhi, zero);
-        let ssumhi = _mm_adds_epu8(lane8_id, floorhi);
-        let maskhi = _mm_cmpeq_epi8(ssumhi, all_ones);
-        let temphi = mm_blendv_epi8(signmask, _b.1, maskhi);
+        let alob = _mm_shuffle_epi8(_a.0, zero);
+        let bmasklo = _mm_cmpeq_epi8(lane8_rev_id_lo, alob);
+        let bmaskhi = _mm_cmpeq_epi8(lane8_rev_id_hi, alob);
+        let bsello = _mm_and_si128(bmasklo, _b.0);
+        let bselhi = _mm_and_si128(bmaskhi, _b.1);
+        let isneglo = _mm_cmpgt_epi8(zero, bsello);
+        let isneghi = _mm_cmpgt_epi8(zero, bselhi);
+        let xlo = _mm_shuffle_epi8(isneglo, alob);
+        let xhi = _mm_shuffle_epi8(isneghi, alob);
+        let signmask = _mm_or_si128(xlo, xhi);
+        let masklo = _mm_cmpgt_epi8(lane8_rev_id_lo, alob);
+        let maskhi = _mm_cmpgt_epi8(lane8_rev_id_hi, alob);
+        let templo = mm_blendv_epi8(_b.0, signmask, masklo);
+        let temphi = mm_blendv_epi8(_b.1, signmask, maskhi);
         let lt32 = broadcast_sse2(is_ltpow2_u256(a, 32));
         let resultlo = mm_blendv_epi8(_b.0, templo, lt32);
         let resulthi = mm_blendv_epi8(_b.1, temphi, lt32);
