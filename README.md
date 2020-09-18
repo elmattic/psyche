@@ -4,14 +4,14 @@
 
 ## Project goals
 
-1. Research, implement and optimize interpretation of EVM bytecode
+- [x] Research, implement and optimize interpretation of EVM bytecode
    in stable Rust.
-2. Explore around using special CPU instructions to speed up most opcodes.
-3. Support a generic target for best portability (x86-64, aarch64).
-4. Optimize for the worst-case (do not optimize average-case at the expense of
+- [x] Explore around using special CPU instructions to speed up most opcodes.
+- [x] Support a generic target for best portability (64-bits, 32 bits).
+- [x] Optimize for the worst-case (do not optimize average-case at the expense of
    worst-case).
-5. Improve Rust compiler for better opcode dispatch via ```indirectbr``` instruction.
-6. Support the EVMC low-level ABI and integrate in OpenEthereum client.
+- [ ] Improve Rust compiler for better opcode dispatch via ```indirectbr``` instruction.
+- [ ] Support the EVMC low-level ABI and integrate in OpenEthereum client.
 
 ## Build
 
