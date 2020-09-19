@@ -1584,29 +1584,25 @@ pub fn exp_u256(base: U256, exponent: U256, exponent_bits: usize) -> U256 {
     result
 }
 
-// // this is only possible with rust nightly (#15701)
-// macro_rules! mm_extract_epi64 {
-//     ($a:expr, 0) => {
-//         #[cfg(target_feature = "sse4.1")]
-//         {
-//             _mm_extract_epi64($a, 0)
-//         }
-//         #[cfg(not(target_feature = "sse4.1"))]
-//         {
-//             _mm_cvtsi128_si64($a)
-//         }
-//     };
-//     ($a:expr, 1) => {
-//         #[cfg(target_feature = "sse4.1")]
-//         {
-//             _mm_extract_epi64($a, 1)
-//         }
-//         #[cfg(not(target_feature = "sse4.1"))]
-//         {
-//             _mm_cvtsi128_si64(_mm_srli_si128(a, 8))
-//         }
-//     }
-// }
+#[cfg(target_feature = "sse4.1")]
+macro_rules! mm_extract_epi64 {
+    ($a:expr, 0) => {
+        _mm_cvtsi128_si64($a)
+    };
+    ($a:expr, 1) => {
+        _mm_extract_epi64($a, 1)
+    }
+}
+
+#[cfg(all(not(target_feature = "sse4.1"), target_feature = "sse2"))]
+macro_rules! mm_extract_epi64 {
+    ($a:expr, 0) => {
+        _mm_cvtsi128_si64($a)
+    };
+    ($a:expr, 1) => {
+        _mm_cvtsi128_si64(_mm_srli_si128($a, 8))
+    }
+}
 
 fn rol_u64(a: u64, b: u64) -> u64 {
     (a << b) | (a >> (64 - b))
@@ -1727,32 +1723,12 @@ pub unsafe fn sha3_u256(input: *const u8, size: usize) -> U256 {
 }
 
 #[cfg(target_feature = "sse2")]
-#[allow(unreachable_code)]
-unsafe fn mm_extract_epi64(a: __m128i, imm8: i32) -> i64 {
-    #[cfg(target_feature = "sse4.1")]
-    {
-        if imm8 == 0 {
-            return _mm_extract_epi64(a, 0);
-        } else if imm8 == 1 {
-            return _mm_extract_epi64(a, 1);
-        }
-        return unreachable!();
-    }
-    if imm8 == 0 {
-        return _mm_cvtsi128_si64(a);
-    } else if imm8 == 1 {
-        return _mm_cvtsi128_si64(_mm_srli_si128(a, 8));
-    }
-    unreachable!()
-}
-
-#[cfg(target_feature = "sse2")]
 fn assert_word_eq(a: (__m128i, __m128i), b: (__m128i, __m128i)) {
     unsafe {
-        assert_eq!(mm_extract_epi64(a.0, 0), mm_extract_epi64(b.0, 0));
-        assert_eq!(mm_extract_epi64(a.0, 1), mm_extract_epi64(b.0, 1));
-        assert_eq!(mm_extract_epi64(a.1, 0), mm_extract_epi64(b.1, 0));
-        assert_eq!(mm_extract_epi64(a.1, 1), mm_extract_epi64(b.1, 1));
+        assert_eq!(mm_extract_epi64!(a.0, 0), mm_extract_epi64!(b.0, 0));
+        assert_eq!(mm_extract_epi64!(a.0, 1), mm_extract_epi64!(b.0, 1));
+        assert_eq!(mm_extract_epi64!(a.1, 0), mm_extract_epi64!(b.1, 0));
+        assert_eq!(mm_extract_epi64!(a.1, 1), mm_extract_epi64!(b.1, 1));
     }
 }
 
