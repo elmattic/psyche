@@ -14,22 +14,23 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Psyche. If not, see <http://www.gnu.org/licenses/>.
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, PartialOrd)]
 pub enum Fork {
-    Frontier = 0,
-    Thawing = 1,
-    Homestead = 2,
-    Dao = 3,
-    Tangerine = 4,
-    Spurious = 5,
-    Byzantium = 6,
-    Constantinople = 7,
-    Istanbul = 8,
+    Frontier,
+    Thawing,
+    Homestead,
+    Dao,
+    Tangerine,
+    Spurious,
+    Byzantium,
+    Constantinople,
+    Istanbul,
+    Berlin,
 }
 
-const FORK_LEN: usize = 9;
+const FORK_LEN: usize = Fork::Berlin as usize + 1;
 
-pub const fn to_block_number(fork: Fork) -> u64 {
+pub fn to_block_number(fork: Fork) -> u64 {
     match fork {
         Fork::Frontier => 1,
         Fork::Thawing => 200_000,
@@ -40,6 +41,7 @@ pub const fn to_block_number(fork: Fork) -> u64 {
         Fork::Byzantium => 4_370_000,
         Fork::Constantinople => 7_280_000,
         Fork::Istanbul => 9_069_000,
+        Fork::Berlin => panic!(),
     }
 }
 
@@ -49,7 +51,7 @@ impl Fork {
     }
 
     pub fn from_block(number: u64) -> Fork {
-        const BLOCK_FORKS: [(u64, Fork); FORK_LEN] = [
+        let block_forks: [(u64, Fork); FORK_LEN] = [
             (to_block_number(Fork::Frontier), Fork::Frontier),
             (to_block_number(Fork::Thawing), Fork::Thawing),
             (to_block_number(Fork::Homestead), Fork::Homestead),
@@ -59,10 +61,11 @@ impl Fork {
             (to_block_number(Fork::Byzantium), Fork::Byzantium),
             (to_block_number(Fork::Constantinople), Fork::Constantinople),
             (to_block_number(Fork::Istanbul), Fork::Istanbul),
+            (to_block_number(Fork::Istanbul), Fork::Istanbul),
         ];
         assert!(number != 0, "block number must be greater than 0");
-        let pos = BLOCK_FORKS.iter().position(|(x, _)| *x > number);
-        BLOCK_FORKS[pos.unwrap_or(FORK_LEN) - 1].1
+        let pos = block_forks.iter().position(|(x, _)| *x > number);
+        block_forks[pos.unwrap_or(FORK_LEN) - 1].1
     }
 }
 
@@ -97,6 +100,7 @@ impl Fee {
 pub struct Schedule {
     pub fees: [u32; FEE_LEN],
     pub memory_gas: u64,
+    pub fork: Fork,
 }
 
 impl Schedule {
@@ -115,10 +119,12 @@ impl Schedule {
             [0, 2, 3, 5, 8, 10, 400, 1, 10, 50, 30, 6, 3, 20], // Byzantium
             [0, 2, 3, 5, 8, 10, 400, 1, 10, 50, 30, 6, 3, 20], // Constantinople
             [0, 2, 3, 5, 8, 10, 400, 1, 10, 50, 30, 6, 3, 20], // Istanbul
+            [0, 2, 3, 5, 8, 10, 400, 1, 10, 50, 30, 6, 3, 20], // Berlin
         ];
         Schedule {
             fees: COSTS[fork as usize],
             memory_gas: 3,
+            fork,
         }
     }
 }

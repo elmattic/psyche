@@ -1591,7 +1591,7 @@ macro_rules! mm_extract_epi64 {
     };
     ($a:expr, 1) => {
         _mm_extract_epi64($a, 1)
-    }
+    };
 }
 
 #[cfg(all(not(target_feature = "sse4.1"), target_feature = "sse2"))]
@@ -1601,7 +1601,7 @@ macro_rules! mm_extract_epi64 {
     };
     ($a:expr, 1) => {
         _mm_cvtsi128_si64(_mm_srli_si128($a, 8))
-    }
+    };
 }
 
 fn rol_u64(a: u64, b: u64) -> u64 {

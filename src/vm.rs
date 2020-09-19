@@ -17,9 +17,267 @@
 use std::convert::TryFrom;
 
 use crate::instructions::{EvmOpcode, Opcode};
-use crate::schedule::Fee::*;
-use crate::schedule::{Fee, Schedule};
+use crate::schedule::{Fee, Fork, Schedule};
 use crate::u256::*;
+
+const OPCODE_INFOS: [(Fork, Fee, u16, u16); 256] = [
+    (Fork::Frontier, Fee::Zero, 0, 0),    /* STOP = 0x00 */
+    (Fork::Frontier, Fee::VeryLow, 2, 1), /* ADD = 0x01 */
+    (Fork::Frontier, Fee::Low, 2, 1),     /* MUL = 0x02 */
+    (Fork::Frontier, Fee::VeryLow, 2, 1), /* SUB = 0x03 */
+    (Fork::Frontier, Fee::Low, 2, 1),     /* DIV = 0x04 */
+    (Fork::Frontier, Fee::Low, 2, 1),     /* SDIV = 0x05 */
+    (Fork::Frontier, Fee::Low, 2, 1),     /* MOD = 0x06 */
+    (Fork::Frontier, Fee::Low, 2, 1),     /* SMOD = 0x07 */
+    (Fork::Frontier, Fee::Mid, 3, 1),     /* ADDMOD = 0x08 */
+    (Fork::Frontier, Fee::Mid, 3, 1),     /* MULMOD = 0x09 */
+    (Fork::Frontier, Fee::Exp, 2, 1),     /* EXP = 0x0a */
+    (Fork::Frontier, Fee::Low, 2, 1),     /* SIGNEXTEND = 0x0b */
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::VeryLow, 2, 1),       /* LT = 0x10 */
+    (Fork::Frontier, Fee::VeryLow, 2, 1),       /* GT = 0x11 */
+    (Fork::Frontier, Fee::VeryLow, 2, 1),       /* SLT = 0x12 */
+    (Fork::Frontier, Fee::VeryLow, 2, 1),       /* SGT = 0x13 */
+    (Fork::Frontier, Fee::VeryLow, 2, 1),       /* EQ = 0x14 */
+    (Fork::Frontier, Fee::VeryLow, 1, 1),       /* ISZERO = 0x15 */
+    (Fork::Frontier, Fee::VeryLow, 2, 1),       /* AND = 0x16 */
+    (Fork::Frontier, Fee::VeryLow, 2, 1),       /* OR = 0x17 */
+    (Fork::Frontier, Fee::VeryLow, 2, 1),       /* XOR = 0x18 */
+    (Fork::Frontier, Fee::VeryLow, 1, 1),       /* NOT = 0x19 */
+    (Fork::Frontier, Fee::VeryLow, 2, 1),       /* BYTE = 0x1a */
+    (Fork::Constantinople, Fee::VeryLow, 2, 1), /* SHL = 0x1b */
+    (Fork::Constantinople, Fee::VeryLow, 2, 1), /* SHR = 0x1c */
+    (Fork::Constantinople, Fee::VeryLow, 2, 1), /* SAR = 0x1d */
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Sha3, 2, 1), /* SHA3 = 0x20 */
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Base, 0, 1),       /* ADDRESS = 0x30 */
+    (Fork::Frontier, Fee::Balance, 1, 1),    /* BALANCE = 0x31 */
+    (Fork::Frontier, Fee::Base, 0, 1),       /* ORIGIN = 0x32 */
+    (Fork::Frontier, Fee::Base, 0, 1),       /* CALLER = 0x33 */
+    (Fork::Frontier, Fee::Base, 0, 1),       /* CALLVALUE = 0x34 */
+    (Fork::Frontier, Fee::VeryLow, 1, 1),    /* CALLDATALOAD = 0x35 */
+    (Fork::Frontier, Fee::Base, 0, 1),       /* CALLDATASIZE = 0x36 */
+    (Fork::Frontier, Fee::Copy, 3, 0),       /* CALLDATACOPY = 0x37 */
+    (Fork::Frontier, Fee::Base, 0, 1),       /* CODESIZE = 0x38 */
+    (Fork::Frontier, Fee::Copy, 3, 0),       /* CODECOPY = 0x39 */
+    (Fork::Frontier, Fee::Base, 0, 1),       /* GASPRICE = 0x3a */
+    (Fork::Frontier, Fee::Zero, 1, 1),       /* EXTCODESIZE = 0x3b */
+    (Fork::Frontier, Fee::Zero, 4, 0),       /* EXTCODECOPY = 0x3c */
+    (Fork::Frontier, Fee::Base, 0, 1),       /* RETURNDATASIZE = 0x3d */
+    (Fork::Frontier, Fee::Copy, 3, 0),       /* RETURNDATACOPY = 0x3e */
+    (Fork::Constantinople, Fee::Zero, 1, 1), /* EXTCODEHASH = 0x3f */
+    (Fork::Frontier, Fee::Blockhash, 1, 1),  /* BLOCKHASH = 0x40 */
+    (Fork::Frontier, Fee::Base, 0, 1),       /* COINBASE = 0x41 */
+    (Fork::Frontier, Fee::Base, 0, 1),       /* TIMESTAMP = 0x42 */
+    (Fork::Frontier, Fee::Base, 0, 1),       /* NUMBER = 0x43 */
+    (Fork::Frontier, Fee::Base, 0, 1),       /* DIFFICULTY = 0x44 */
+    (Fork::Frontier, Fee::Base, 0, 1),       /* GASLIMIT = 0x45 */
+    (Fork::Istanbul, Fee::Base, 0, 1),       /* CHAINID = 0x46 */
+    (Fork::Frontier, Fee::Low, 0, 1),        /* SELFBALANCE = 0x47 */
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Base, 1, 0),     /* POP = 0x50 */
+    (Fork::Frontier, Fee::VeryLow, 1, 1),  /* MLOAD = 0x51 */
+    (Fork::Frontier, Fee::VeryLow, 2, 0),  /* MSTORE = 0x52 */
+    (Fork::Frontier, Fee::VeryLow, 2, 0),  /* MSTORE8 = 0x53 */
+    (Fork::Frontier, Fee::Zero, 1, 1),     /* SLOAD = 0x54 */
+    (Fork::Frontier, Fee::Zero, 2, 0),     /* SSTORE = 0x55 */
+    (Fork::Frontier, Fee::Mid, 1, 0),      /* JUMP = 0x56 */
+    (Fork::Frontier, Fee::High, 2, 0),     /* JUMPI = 0x57 */
+    (Fork::Frontier, Fee::Base, 0, 1),     /* PC = 0x58 */
+    (Fork::Frontier, Fee::Base, 0, 1),     /* MSIZE = 0x59 */
+    (Fork::Frontier, Fee::Base, 0, 1),     /* GAS = 0x5a */
+    (Fork::Frontier, Fee::Jumpdest, 0, 0), /* JUMPDEST = 0x5b */
+    (Fork::Berlin, Fee::Base, 0, 0),       /* BEGINSUB = 0x5c */
+    (Fork::Berlin, Fee::Low, 0, 0),        /* RETURNSUB = 0x5d */
+    (Fork::Berlin, Fee::High, 1, 0),       /* JUMPSUB = 0x5e */
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH1 = 0x60 */
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH2 = 0x61 */
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH3 = 0x62 */
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH4 = 0x63 */
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH5 = 0x64 */
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH6 = 0x65 */
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH7 = 0x66 */
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH8 = 0x67 */
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH9 = 0x68 */
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH10 = 0x69 */
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH11 = 0x6a */
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH12 = 0x6b */
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH13 = 0x6c */
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH14 = 0x6d */
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH15 = 0x6e */
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH16 = 0x6f */
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH17 = 0x70 */
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH18 = 0x71 */
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH19 = 0x72 */
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH20 = 0x73 */
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH21 = 0x74 */
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH22 = 0x75 */
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH23 = 0x76 */
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH24 = 0x77 */
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH25 = 0x78 */
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH26 = 0x79 */
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH27 = 0x7a */
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH28 = 0x7b */
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH29 = 0x7c */
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH30 = 0x7d */
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH31 = 0x7e */
+    (Fork::Frontier, Fee::VeryLow, 0, 1),   /* PUSH32 = 0x7f */
+    (Fork::Frontier, Fee::VeryLow, 1, 2),   /* DUP1 = 0x80 */
+    (Fork::Frontier, Fee::VeryLow, 2, 3),   /* DUP2 = 0x81 */
+    (Fork::Frontier, Fee::VeryLow, 3, 4),   /* DUP3 = 0x82 */
+    (Fork::Frontier, Fee::VeryLow, 4, 5),   /* DUP4 = 0x83 */
+    (Fork::Frontier, Fee::VeryLow, 5, 6),   /* DUP5 = 0x84 */
+    (Fork::Frontier, Fee::VeryLow, 6, 7),   /* DUP6 = 0x85 */
+    (Fork::Frontier, Fee::VeryLow, 7, 8),   /* DUP7 = 0x86 */
+    (Fork::Frontier, Fee::VeryLow, 8, 9),   /* DUP8 = 0x87 */
+    (Fork::Frontier, Fee::VeryLow, 9, 10),  /* DUP9 = 0x88 */
+    (Fork::Frontier, Fee::VeryLow, 10, 11), /* DUP10 = 0x89 */
+    (Fork::Frontier, Fee::VeryLow, 11, 12), /* DUP11 = 0x8a */
+    (Fork::Frontier, Fee::VeryLow, 12, 13), /* DUP12 = 0x8b */
+    (Fork::Frontier, Fee::VeryLow, 13, 14), /* DUP13 = 0x8c */
+    (Fork::Frontier, Fee::VeryLow, 14, 15), /* DUP14 = 0x8d */
+    (Fork::Frontier, Fee::VeryLow, 15, 16), /* DUP15 = 0x8e */
+    (Fork::Frontier, Fee::VeryLow, 16, 17), /* DUP16 = 0x8f */
+    (Fork::Frontier, Fee::VeryLow, 2, 2),   /* SWAP1 = 0x90 */
+    (Fork::Frontier, Fee::VeryLow, 3, 3),   /* SWAP2 = 0x91 */
+    (Fork::Frontier, Fee::VeryLow, 4, 4),   /* SWAP3 = 0x92 */
+    (Fork::Frontier, Fee::VeryLow, 5, 5),   /* SWAP4 = 0x93 */
+    (Fork::Frontier, Fee::VeryLow, 6, 6),   /* SWAP5 = 0x94 */
+    (Fork::Frontier, Fee::VeryLow, 7, 7),   /* SWAP6 = 0x95 */
+    (Fork::Frontier, Fee::VeryLow, 8, 8),   /* SWAP7 = 0x96 */
+    (Fork::Frontier, Fee::VeryLow, 9, 9),   /* SWAP8 = 0x97 */
+    (Fork::Frontier, Fee::VeryLow, 10, 10), /* SWAP9 = 0x98 */
+    (Fork::Frontier, Fee::VeryLow, 11, 11), /* SWAP10 = 0x99 */
+    (Fork::Frontier, Fee::VeryLow, 12, 12), /* SWAP11 = 0x9a */
+    (Fork::Frontier, Fee::VeryLow, 13, 13), /* SWAP12 = 0x9b */
+    (Fork::Frontier, Fee::VeryLow, 14, 14), /* SWAP13 = 0x9c */
+    (Fork::Frontier, Fee::VeryLow, 15, 15), /* SWAP14 = 0x9d */
+    (Fork::Frontier, Fee::VeryLow, 16, 16), /* SWAP15 = 0x9e */
+    (Fork::Frontier, Fee::VeryLow, 17, 17), /* SWAP16 = 0x9f */
+    (Fork::Frontier, Fee::Zero, 2, 0),      /* LOG0 = 0xa0 */
+    (Fork::Frontier, Fee::Zero, 3, 0),      /* LOG1 = 0xa1 */
+    (Fork::Frontier, Fee::Zero, 4, 0),      /* LOG2 = 0xa2 */
+    (Fork::Frontier, Fee::Zero, 5, 0),      /* LOG3 = 0xa3 */
+    (Fork::Frontier, Fee::Zero, 6, 0),      /* LOG4 = 0xa4 */
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 3, 1),       /* CREATE = 0xf0 */
+    (Fork::Frontier, Fee::Zero, 7, 1),       /* CALL = 0xf1 */
+    (Fork::Frontier, Fee::Zero, 7, 1),       /* CALLCODE = 0xf2 */
+    (Fork::Frontier, Fee::Zero, 2, 0),       /* RETURN = 0xf3 */
+    (Fork::Frontier, Fee::Zero, 6, 1),       /* DELEGATECALL = 0xf4 */
+    (Fork::Constantinople, Fee::Zero, 4, 1), /* CREATE2 = 0xf5 */
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Byzantium, Fee::Zero, 6, 1), /* STATICCALL = 0xfa */
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Frontier, Fee::Zero, 0, 0),
+    (Fork::Byzantium, Fee::Zero, 2, 0), /* REVERT = 0xfd */
+    (Fork::Frontier, Fee::Zero, 0, 0),  /* INVALID = 0xfe */
+    (Fork::Frontier, Fee::Zero, 1, 0),  /* SELFDESTRUCT = 0xff */
+];
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum VmError {
@@ -1046,264 +1304,6 @@ impl VmRom {
                 }
             }
         }
-        const OPCODE_INFOS: [(Fee, u16, u16); 256] = [
-            (Zero, 0, 0), /* STOP = 0x00 */
-            (VeryLow, 2, 1), /* ADD = 0x01 */
-            (Low, 2, 1), /* MUL = 0x02 */
-            (VeryLow, 2, 1), /* SUB = 0x03 */
-            (Low, 2, 1), /* DIV = 0x04 */
-            (Low, 2, 1), /* SDIV = 0x05 */
-            (Low, 2, 1), /* MOD = 0x06 */
-            (Low, 2, 1), /* SMOD = 0x07 */
-            (Mid, 3, 1), /* ADDMOD = 0x08 */
-            (Mid, 3, 1), /* MULMOD = 0x09 */
-            (Exp, 2, 1), /* EXP = 0x0a */
-            (Low, 2, 1), /* SIGNEXTEND = 0x0b */
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (VeryLow, 2, 1), /* LT = 0x10 */
-            (VeryLow, 2, 1), /* GT = 0x11 */
-            (VeryLow, 2, 1), /* SLT = 0x12 */
-            (VeryLow, 2, 1), /* SGT = 0x13 */
-            (VeryLow, 2, 1), /* EQ = 0x14 */
-            (VeryLow, 1, 1), /* ISZERO = 0x15 */
-            (VeryLow, 2, 1), /* AND = 0x16 */
-            (VeryLow, 2, 1), /* OR = 0x17 */
-            (VeryLow, 2, 1), /* XOR = 0x18 */
-            (VeryLow, 1, 1), /* NOT = 0x19 */
-            (VeryLow, 2, 1), /* BYTE = 0x1a */
-            (VeryLow, 2, 1), /* SHL = 0x1b */
-            (VeryLow, 2, 1), /* SHR = 0x1c */
-            (VeryLow, 2, 1), /* SAR = 0x1d */
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Sha3, 2, 1), /* SHA3 = 0x20 */
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Base, 0, 1), /* ADDRESS = 0x30 */
-            (Balance, 1, 1), /* BALANCE = 0x31 */
-            (Base, 0, 1), /* ORIGIN = 0x32 */
-            (Base, 0, 1), /* CALLER = 0x33 */
-            (Base, 0, 1), /* CALLVALUE = 0x34 */
-            (VeryLow, 1, 1), /* CALLDATALOAD = 0x35 */
-            (Base, 0, 1), /* CALLDATASIZE = 0x36 */
-            (Copy, 3, 0), /* CALLDATACOPY = 0x37 */
-            (Base, 0, 1), /* CODESIZE = 0x38 */
-            (Copy, 3, 0), /* CODECOPY = 0x39 */
-            (Base, 0, 1), /* GASPRICE = 0x3a */
-            (Zero, 1, 1), /* EXTCODESIZE = 0x3b */
-            (Zero, 4, 0), /* EXTCODECOPY = 0x3c */
-            (Base, 0, 1), /* RETURNDATASIZE = 0x3d */
-            (Copy, 3, 0), /* RETURNDATACOPY = 0x3e */
-            (Zero, 1, 1), /* EXTCODEHASH = 0x3f */
-            (Blockhash, 1, 1), /* BLOCKHASH = 0x40 */
-            (Base, 0, 1), /* COINBASE = 0x41 */
-            (Base, 0, 1), /* TIMESTAMP = 0x42 */
-            (Base, 0, 1), /* NUMBER = 0x43 */
-            (Base, 0, 1), /* DIFFICULTY = 0x44 */
-            (Base, 0, 1), /* GASLIMIT = 0x45 */
-            (Base, 0, 1), /* CHAINID = 0x46 */
-            (Low, 0, 1), /* SELFBALANCE = 0x47 */
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Base, 1, 0), /* POP = 0x50 */
-            (VeryLow, 1, 1), /* MLOAD = 0x51 */
-            (VeryLow, 2, 0), /* MSTORE = 0x52 */
-            (VeryLow, 2, 0), /* MSTORE8 = 0x53 */
-            (Zero, 1, 1), /* SLOAD = 0x54 */
-            (Zero, 2, 0), /* SSTORE = 0x55 */
-            (Mid, 1, 0), /* JUMP = 0x56 */
-            (High, 2, 0), /* JUMPI = 0x57 */
-            (Base, 0, 1), /* PC = 0x58 */
-            (Base, 0, 1), /* MSIZE = 0x59 */
-            (Base, 0, 1), /* GAS = 0x5a */
-            (Jumpdest, 0, 0), /* JUMPDEST = 0x5b */
-            (Base, 0, 0), /* BEGINSUB = 0x5c */
-            (Low, 0, 0), /* RETURNSUB = 0x5d */
-            (High, 1, 0), /* JUMPSUB = 0x5e */
-            (Zero, 0, 0),
-            (VeryLow, 0, 1), /* PUSH1 = 0x60 */
-            (VeryLow, 0, 1), /* PUSH2 = 0x61 */
-            (VeryLow, 0, 1), /* PUSH3 = 0x62 */
-            (VeryLow, 0, 1), /* PUSH4 = 0x63 */
-            (VeryLow, 0, 1), /* PUSH5 = 0x64 */
-            (VeryLow, 0, 1), /* PUSH6 = 0x65 */
-            (VeryLow, 0, 1), /* PUSH7 = 0x66 */
-            (VeryLow, 0, 1), /* PUSH8 = 0x67 */
-            (VeryLow, 0, 1), /* PUSH9 = 0x68 */
-            (VeryLow, 0, 1), /* PUSH10 = 0x69 */
-            (VeryLow, 0, 1), /* PUSH11 = 0x6a */
-            (VeryLow, 0, 1), /* PUSH12 = 0x6b */
-            (VeryLow, 0, 1), /* PUSH13 = 0x6c */
-            (VeryLow, 0, 1), /* PUSH14 = 0x6d */
-            (VeryLow, 0, 1), /* PUSH15 = 0x6e */
-            (VeryLow, 0, 1), /* PUSH16 = 0x6f */
-            (VeryLow, 0, 1), /* PUSH17 = 0x70 */
-            (VeryLow, 0, 1), /* PUSH18 = 0x71 */
-            (VeryLow, 0, 1), /* PUSH19 = 0x72 */
-            (VeryLow, 0, 1), /* PUSH20 = 0x73 */
-            (VeryLow, 0, 1), /* PUSH21 = 0x74 */
-            (VeryLow, 0, 1), /* PUSH22 = 0x75 */
-            (VeryLow, 0, 1), /* PUSH23 = 0x76 */
-            (VeryLow, 0, 1), /* PUSH24 = 0x77 */
-            (VeryLow, 0, 1), /* PUSH25 = 0x78 */
-            (VeryLow, 0, 1), /* PUSH26 = 0x79 */
-            (VeryLow, 0, 1), /* PUSH27 = 0x7a */
-            (VeryLow, 0, 1), /* PUSH28 = 0x7b */
-            (VeryLow, 0, 1), /* PUSH29 = 0x7c */
-            (VeryLow, 0, 1), /* PUSH30 = 0x7d */
-            (VeryLow, 0, 1), /* PUSH31 = 0x7e */
-            (VeryLow, 0, 1), /* PUSH32 = 0x7f */
-            (VeryLow, 1, 2), /* DUP1 = 0x80 */
-            (VeryLow, 2, 3), /* DUP2 = 0x81 */
-            (VeryLow, 3, 4), /* DUP3 = 0x82 */
-            (VeryLow, 4, 5), /* DUP4 = 0x83 */
-            (VeryLow, 5, 6), /* DUP5 = 0x84 */
-            (VeryLow, 6, 7), /* DUP6 = 0x85 */
-            (VeryLow, 7, 8), /* DUP7 = 0x86 */
-            (VeryLow, 8, 9), /* DUP8 = 0x87 */
-            (VeryLow, 9, 10), /* DUP9 = 0x88 */
-            (VeryLow, 10, 11), /* DUP10 = 0x89 */
-            (VeryLow, 11, 12), /* DUP11 = 0x8a */
-            (VeryLow, 12, 13), /* DUP12 = 0x8b */
-            (VeryLow, 13, 14), /* DUP13 = 0x8c */
-            (VeryLow, 14, 15), /* DUP14 = 0x8d */
-            (VeryLow, 15, 16), /* DUP15 = 0x8e */
-            (VeryLow, 16, 17), /* DUP16 = 0x8f */
-            (VeryLow, 2, 2), /* SWAP1 = 0x90 */
-            (VeryLow, 3, 3), /* SWAP2 = 0x91 */
-            (VeryLow, 4, 4), /* SWAP3 = 0x92 */
-            (VeryLow, 5, 5), /* SWAP4 = 0x93 */
-            (VeryLow, 6, 6), /* SWAP5 = 0x94 */
-            (VeryLow, 7, 7), /* SWAP6 = 0x95 */
-            (VeryLow, 8, 8), /* SWAP7 = 0x96 */
-            (VeryLow, 9, 9), /* SWAP8 = 0x97 */
-            (VeryLow, 10, 10), /* SWAP9 = 0x98 */
-            (VeryLow, 11, 11), /* SWAP10 = 0x99 */
-            (VeryLow, 12, 12), /* SWAP11 = 0x9a */
-            (VeryLow, 13, 13), /* SWAP12 = 0x9b */
-            (VeryLow, 14, 14), /* SWAP13 = 0x9c */
-            (VeryLow, 15, 15), /* SWAP14 = 0x9d */
-            (VeryLow, 16, 16), /* SWAP15 = 0x9e */
-            (VeryLow, 17, 17), /* SWAP16 = 0x9f */
-            (Zero, 2, 0), /* LOG0 = 0xa0 */
-            (Zero, 3, 0), /* LOG1 = 0xa1 */
-            (Zero, 4, 0), /* LOG2 = 0xa2 */
-            (Zero, 5, 0), /* LOG3 = 0xa3 */
-            (Zero, 6, 0), /* LOG4 = 0xa4 */
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 3, 1), /* CREATE = 0xf0 */
-            (Zero, 7, 1), /* CALL = 0xf1 */
-            (Zero, 7, 1), /* CALLCODE = 0xf2 */
-            (Zero, 2, 0), /* RETURN = 0xf3 */
-            (Zero, 6, 1), /* DELEGATECALL = 0xf4 */
-            (Zero, 4, 1), /* CREATE2 = 0xf5 */
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 6, 1), /* STATICCALL = 0xfa */
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 2, 0), /* REVERT = 0xfd */
-            (Zero, 0, 0), /* INVALID = 0xfe */
-            (Zero, 1, 0), /* SELFDESTRUCT = 0xff */
-        ];
         let mut addr: u32 = 0;
         let mut stack_size: u16 = 0;
         let mut stack_min_size: u16 = 0;
@@ -1315,7 +1315,7 @@ impl VmRom {
         while i < bytecode.len() {
             let code = bytecode[i];
             let opcode = unsafe { std::mem::transmute::<u8, EvmOpcode>(code) };
-            let (fee, delta, alpha) = OPCODE_INFOS[code as usize];
+            let (_, fee, delta, alpha) = OPCODE_INFOS[code as usize];
             // new_stack_size is (stack_size + needed + alpha) - delta
             // and represents the new stack size after the opcode has been
             // dispatched
@@ -1414,7 +1414,12 @@ impl VmRom {
             let mut i: usize = 0;
             while i < bytecode.len() {
                 let code = bytecode[i];
-                let opcode = unsafe { std::mem::transmute::<u8, EvmOpcode>(code) };
+                let (introduced_fork, _, _, _) = OPCODE_INFOS[code as usize];
+                let opcode = if schedule.fork >= introduced_fork {
+                    unsafe { std::mem::transmute::<u8, EvmOpcode>(code) }
+                } else {
+                    EvmOpcode::INVALID
+                };
                 self.data[i] = opcode.to_internal() as u8;
                 if opcode.is_push() {
                     let num_bytes = opcode.push_index() + 1;
