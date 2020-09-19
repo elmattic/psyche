@@ -1047,171 +1047,173 @@ impl VmRom {
             }
         }
         const OPCODE_INFOS: [(Fee, u16, u16); 256] = [
+            (Zero, 0, 0), /* STOP = 0x00 */
+            (VeryLow, 2, 1), /* ADD = 0x01 */
+            (Low, 2, 1), /* MUL = 0x02 */
+            (VeryLow, 2, 1), /* SUB = 0x03 */
+            (Low, 2, 1), /* DIV = 0x04 */
+            (Low, 2, 1), /* SDIV = 0x05 */
+            (Low, 2, 1), /* MOD = 0x06 */
+            (Low, 2, 1), /* SMOD = 0x07 */
+            (Mid, 3, 1), /* ADDMOD = 0x08 */
+            (Mid, 3, 1), /* MULMOD = 0x09 */
+            (Exp, 2, 1), /* EXP = 0x0a */
+            (Low, 2, 1), /* SIGNEXTEND = 0x0b */
             (Zero, 0, 0),
-            (VeryLow, 2, 1),
-            (Low, 2, 1),
-            (VeryLow, 2, 1),
-            (Low, 2, 1),
-            (Low, 2, 1),
-            (Low, 2, 1),
-            (Low, 2, 1),
-            (Mid, 3, 1),
-            (Mid, 3, 1),
-            (Exp, 2, 1),
-            (Low, 2, 1),
             (Zero, 0, 0),
             (Zero, 0, 0),
             (Zero, 0, 0),
+            (VeryLow, 2, 1), /* LT = 0x10 */
+            (VeryLow, 2, 1), /* GT = 0x11 */
+            (VeryLow, 2, 1), /* SLT = 0x12 */
+            (VeryLow, 2, 1), /* SGT = 0x13 */
+            (VeryLow, 2, 1), /* EQ = 0x14 */
+            (VeryLow, 1, 1), /* ISZERO = 0x15 */
+            (VeryLow, 2, 1), /* AND = 0x16 */
+            (VeryLow, 2, 1), /* OR = 0x17 */
+            (VeryLow, 2, 1), /* XOR = 0x18 */
+            (VeryLow, 1, 1), /* NOT = 0x19 */
+            (VeryLow, 2, 1), /* BYTE = 0x1a */
+            (VeryLow, 2, 1), /* SHL = 0x1b */
+            (VeryLow, 2, 1), /* SHR = 0x1c */
+            (VeryLow, 2, 1), /* SAR = 0x1d */
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Sha3, 2, 1), /* SHA3 = 0x20 */
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Base, 0, 1), /* ADDRESS = 0x30 */
+            (Balance, 1, 1), /* BALANCE = 0x31 */
+            (Base, 0, 1), /* ORIGIN = 0x32 */
+            (Base, 0, 1), /* CALLER = 0x33 */
+            (Base, 0, 1), /* CALLVALUE = 0x34 */
+            (VeryLow, 1, 1), /* CALLDATALOAD = 0x35 */
+            (Base, 0, 1), /* CALLDATASIZE = 0x36 */
+            (Copy, 3, 0), /* CALLDATACOPY = 0x37 */
+            (Base, 0, 1), /* CODESIZE = 0x38 */
+            (Copy, 3, 0), /* CODECOPY = 0x39 */
+            (Base, 0, 1), /* GASPRICE = 0x3a */
+            (Zero, 1, 1), /* EXTCODESIZE = 0x3b */
+            (Zero, 4, 0), /* EXTCODECOPY = 0x3c */
+            (Base, 0, 1), /* RETURNDATASIZE = 0x3d */
+            (Copy, 3, 0), /* RETURNDATACOPY = 0x3e */
+            (Zero, 1, 1), /* EXTCODEHASH = 0x3f */
+            (Blockhash, 1, 1), /* BLOCKHASH = 0x40 */
+            (Base, 0, 1), /* COINBASE = 0x41 */
+            (Base, 0, 1), /* TIMESTAMP = 0x42 */
+            (Base, 0, 1), /* NUMBER = 0x43 */
+            (Base, 0, 1), /* DIFFICULTY = 0x44 */
+            (Base, 0, 1), /* GASLIMIT = 0x45 */
+            (Base, 0, 1), /* CHAINID = 0x46 */
+            (Low, 0, 1), /* SELFBALANCE = 0x47 */
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Zero, 0, 0),
+            (Base, 1, 0), /* POP = 0x50 */
+            (VeryLow, 1, 1), /* MLOAD = 0x51 */
+            (VeryLow, 2, 0), /* MSTORE = 0x52 */
+            (VeryLow, 2, 0), /* MSTORE8 = 0x53 */
+            (Zero, 1, 1), /* SLOAD = 0x54 */
+            (Zero, 2, 0), /* SSTORE = 0x55 */
+            (Mid, 1, 0), /* JUMP = 0x56 */
+            (High, 2, 0), /* JUMPI = 0x57 */
+            (Base, 0, 1), /* PC = 0x58 */
+            (Base, 0, 1), /* MSIZE = 0x59 */
+            (Base, 0, 1), /* GAS = 0x5a */
+            (Jumpdest, 0, 0), /* JUMPDEST = 0x5b */
+            (Base, 0, 0), /* BEGINSUB = 0x5c */
+            (Low, 0, 0), /* RETURNSUB = 0x5d */
+            (High, 1, 0), /* JUMPSUB = 0x5e */
             (Zero, 0, 0),
-            (VeryLow, 2, 1),
-            (VeryLow, 2, 1),
-            (VeryLow, 2, 1),
-            (VeryLow, 2, 1),
-            (VeryLow, 2, 1),
-            (VeryLow, 1, 1),
-            (VeryLow, 2, 1),
-            (VeryLow, 2, 1),
-            (VeryLow, 2, 1),
-            (VeryLow, 1, 1),
-            (VeryLow, 2, 1),
-            (VeryLow, 2, 1),
-            (VeryLow, 2, 1),
-            (VeryLow, 2, 1),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Sha3, 2, 1),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Base, 0, 1),
-            (Balance, 1, 1),
-            (Base, 0, 1),
-            (Base, 0, 1),
-            (Base, 0, 1),
-            (VeryLow, 1, 1),
-            (Base, 0, 1),
-            (Copy, 3, 0),
-            (Base, 0, 1),
-            (Copy, 3, 0),
-            (Base, 0, 1),
-            (Zero, 1, 1),
-            (Zero, 4, 0),
-            (Base, 0, 1),
-            (Copy, 3, 0),
-            (Zero, 1, 1),
-            (Blockhash, 1, 1),
-            (Base, 0, 1),
-            (Base, 0, 1),
-            (Base, 0, 1),
-            (Base, 0, 1),
-            (Base, 0, 1),
-            (Base, 0, 1),
-            (Low, 0, 1),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
+            (VeryLow, 0, 1), /* PUSH1 = 0x60 */
+            (VeryLow, 0, 1), /* PUSH2 = 0x61 */
+            (VeryLow, 0, 1), /* PUSH3 = 0x62 */
+            (VeryLow, 0, 1), /* PUSH4 = 0x63 */
+            (VeryLow, 0, 1), /* PUSH5 = 0x64 */
+            (VeryLow, 0, 1), /* PUSH6 = 0x65 */
+            (VeryLow, 0, 1), /* PUSH7 = 0x66 */
+            (VeryLow, 0, 1), /* PUSH8 = 0x67 */
+            (VeryLow, 0, 1), /* PUSH9 = 0x68 */
+            (VeryLow, 0, 1), /* PUSH10 = 0x69 */
+            (VeryLow, 0, 1), /* PUSH11 = 0x6a */
+            (VeryLow, 0, 1), /* PUSH12 = 0x6b */
+            (VeryLow, 0, 1), /* PUSH13 = 0x6c */
+            (VeryLow, 0, 1), /* PUSH14 = 0x6d */
+            (VeryLow, 0, 1), /* PUSH15 = 0x6e */
+            (VeryLow, 0, 1), /* PUSH16 = 0x6f */
+            (VeryLow, 0, 1), /* PUSH17 = 0x70 */
+            (VeryLow, 0, 1), /* PUSH18 = 0x71 */
+            (VeryLow, 0, 1), /* PUSH19 = 0x72 */
+            (VeryLow, 0, 1), /* PUSH20 = 0x73 */
+            (VeryLow, 0, 1), /* PUSH21 = 0x74 */
+            (VeryLow, 0, 1), /* PUSH22 = 0x75 */
+            (VeryLow, 0, 1), /* PUSH23 = 0x76 */
+            (VeryLow, 0, 1), /* PUSH24 = 0x77 */
+            (VeryLow, 0, 1), /* PUSH25 = 0x78 */
+            (VeryLow, 0, 1), /* PUSH26 = 0x79 */
+            (VeryLow, 0, 1), /* PUSH27 = 0x7a */
+            (VeryLow, 0, 1), /* PUSH28 = 0x7b */
+            (VeryLow, 0, 1), /* PUSH29 = 0x7c */
+            (VeryLow, 0, 1), /* PUSH30 = 0x7d */
+            (VeryLow, 0, 1), /* PUSH31 = 0x7e */
+            (VeryLow, 0, 1), /* PUSH32 = 0x7f */
+            (VeryLow, 1, 2), /* DUP1 = 0x80 */
+            (VeryLow, 2, 3), /* DUP2 = 0x81 */
+            (VeryLow, 3, 4), /* DUP3 = 0x82 */
+            (VeryLow, 4, 5), /* DUP4 = 0x83 */
+            (VeryLow, 5, 6), /* DUP5 = 0x84 */
+            (VeryLow, 6, 7), /* DUP6 = 0x85 */
+            (VeryLow, 7, 8), /* DUP7 = 0x86 */
+            (VeryLow, 8, 9), /* DUP8 = 0x87 */
+            (VeryLow, 9, 10), /* DUP9 = 0x88 */
+            (VeryLow, 10, 11), /* DUP10 = 0x89 */
+            (VeryLow, 11, 12), /* DUP11 = 0x8a */
+            (VeryLow, 12, 13), /* DUP12 = 0x8b */
+            (VeryLow, 13, 14), /* DUP13 = 0x8c */
+            (VeryLow, 14, 15), /* DUP14 = 0x8d */
+            (VeryLow, 15, 16), /* DUP15 = 0x8e */
+            (VeryLow, 16, 17), /* DUP16 = 0x8f */
+            (VeryLow, 2, 2), /* SWAP1 = 0x90 */
+            (VeryLow, 3, 3), /* SWAP2 = 0x91 */
+            (VeryLow, 4, 4), /* SWAP3 = 0x92 */
+            (VeryLow, 5, 5), /* SWAP4 = 0x93 */
+            (VeryLow, 6, 6), /* SWAP5 = 0x94 */
+            (VeryLow, 7, 7), /* SWAP6 = 0x95 */
+            (VeryLow, 8, 8), /* SWAP7 = 0x96 */
+            (VeryLow, 9, 9), /* SWAP8 = 0x97 */
+            (VeryLow, 10, 10), /* SWAP9 = 0x98 */
+            (VeryLow, 11, 11), /* SWAP10 = 0x99 */
+            (VeryLow, 12, 12), /* SWAP11 = 0x9a */
+            (VeryLow, 13, 13), /* SWAP12 = 0x9b */
+            (VeryLow, 14, 14), /* SWAP13 = 0x9c */
+            (VeryLow, 15, 15), /* SWAP14 = 0x9d */
+            (VeryLow, 16, 16), /* SWAP15 = 0x9e */
+            (VeryLow, 17, 17), /* SWAP16 = 0x9f */
+            (Zero, 2, 0), /* LOG0 = 0xa0 */
+            (Zero, 3, 0), /* LOG1 = 0xa1 */
+            (Zero, 4, 0), /* LOG2 = 0xa2 */
+            (Zero, 5, 0), /* LOG3 = 0xa3 */
+            (Zero, 6, 0), /* LOG4 = 0xa4 */
             (Zero, 0, 0),
-            (Base, 1, 0),
-            (VeryLow, 1, 1),
-            (VeryLow, 2, 0),
-            (VeryLow, 2, 0),
-            (Zero, 1, 1),
-            (Zero, 2, 0),
-            (Mid, 1, 0),
-            (High, 2, 0),
-            (Base, 0, 1),
-            (Base, 0, 1),
-            (Base, 0, 1),
-            (Jumpdest, 0, 0),
-            (Base, 0, 0),
-            (Low, 0, 0),
-            (High, 1, 0),
             (Zero, 0, 0),
-            (VeryLow, 0, 1),
-            (VeryLow, 0, 1),
-            (VeryLow, 0, 1),
-            (VeryLow, 0, 1),
-            (VeryLow, 0, 1),
-            (VeryLow, 0, 1),
-            (VeryLow, 0, 1),
-            (VeryLow, 0, 1),
-            (VeryLow, 0, 1),
-            (VeryLow, 0, 1),
-            (VeryLow, 0, 1),
-            (VeryLow, 0, 1),
-            (VeryLow, 0, 1),
-            (VeryLow, 0, 1),
-            (VeryLow, 0, 1),
-            (VeryLow, 0, 1),
-            (VeryLow, 0, 1),
-            (VeryLow, 0, 1),
-            (VeryLow, 0, 1),
-            (VeryLow, 0, 1),
-            (VeryLow, 0, 1),
-            (VeryLow, 0, 1),
-            (VeryLow, 0, 1),
-            (VeryLow, 0, 1),
-            (VeryLow, 0, 1),
-            (VeryLow, 0, 1),
-            (VeryLow, 0, 1),
-            (VeryLow, 0, 1),
-            (VeryLow, 0, 1),
-            (VeryLow, 0, 1),
-            (VeryLow, 0, 1),
-            (VeryLow, 0, 1),
-            (VeryLow, 1, 2),
-            (VeryLow, 2, 3),
-            (VeryLow, 3, 4),
-            (VeryLow, 4, 5),
-            (VeryLow, 5, 6),
-            (VeryLow, 6, 7),
-            (VeryLow, 7, 8),
-            (VeryLow, 8, 9),
-            (VeryLow, 9, 10),
-            (VeryLow, 10, 11),
-            (VeryLow, 11, 12),
-            (VeryLow, 12, 13),
-            (VeryLow, 13, 14),
-            (VeryLow, 14, 15),
-            (VeryLow, 15, 16),
-            (VeryLow, 16, 17),
-            (VeryLow, 2, 2),
-            (VeryLow, 3, 3),
-            (VeryLow, 4, 4),
-            (VeryLow, 5, 5),
-            (VeryLow, 6, 6),
-            (VeryLow, 7, 7),
-            (VeryLow, 8, 8),
-            (VeryLow, 9, 9),
-            (VeryLow, 10, 10),
-            (VeryLow, 11, 11),
-            (VeryLow, 12, 12),
-            (VeryLow, 13, 13),
-            (VeryLow, 14, 14),
-            (VeryLow, 15, 15),
-            (VeryLow, 16, 16),
-            (VeryLow, 17, 17),
-            (Zero, 2, 0),
-            (Zero, 3, 0),
-            (Zero, 4, 0),
-            (Zero, 5, 0),
-            (Zero, 6, 0),
             (Zero, 0, 0),
             (Zero, 0, 0),
             (Zero, 0, 0),
@@ -1285,24 +1287,22 @@ impl VmRom {
             (Zero, 0, 0),
             (Zero, 0, 0),
             (Zero, 0, 0),
+            (Zero, 3, 1), /* CREATE = 0xf0 */
+            (Zero, 7, 1), /* CALL = 0xf1 */
+            (Zero, 7, 1), /* CALLCODE = 0xf2 */
+            (Zero, 2, 0), /* RETURN = 0xf3 */
+            (Zero, 6, 1), /* DELEGATECALL = 0xf4 */
+            (Zero, 4, 1), /* CREATE2 = 0xf5 */
             (Zero, 0, 0),
             (Zero, 0, 0),
-            (Zero, 3, 1),
-            (Zero, 7, 1),
-            (Zero, 7, 1),
-            (Zero, 2, 0),
-            (Zero, 6, 1),
-            (Zero, 4, 1),
             (Zero, 0, 0),
             (Zero, 0, 0),
+            (Zero, 6, 1), /* STATICCALL = 0xfa */
             (Zero, 0, 0),
             (Zero, 0, 0),
-            (Zero, 6, 1),
-            (Zero, 0, 0),
-            (Zero, 0, 0),
-            (Zero, 2, 0),
-            (Zero, 0, 0),
-            (Zero, 1, 0),
+            (Zero, 2, 0), /* REVERT = 0xfd */
+            (Zero, 0, 0), /* INVALID = 0xfe */
+            (Zero, 1, 0), /* SELFDESTRUCT = 0xff */
         ];
         let mut addr: u32 = 0;
         let mut stack_size: u16 = 0;
