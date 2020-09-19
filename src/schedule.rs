@@ -51,17 +51,18 @@ impl Fork {
     }
 
     pub fn from_block(number: u64) -> Fork {
+        let block_fork = |f| (to_block_number(f), f);
         let block_forks: [(u64, Fork); FORK_LEN] = [
-            (to_block_number(Fork::Frontier), Fork::Frontier),
-            (to_block_number(Fork::Thawing), Fork::Thawing),
-            (to_block_number(Fork::Homestead), Fork::Homestead),
-            (to_block_number(Fork::Dao), Fork::Dao),
-            (to_block_number(Fork::Tangerine), Fork::Tangerine),
-            (to_block_number(Fork::Spurious), Fork::Spurious),
-            (to_block_number(Fork::Byzantium), Fork::Byzantium),
-            (to_block_number(Fork::Constantinople), Fork::Constantinople),
-            (to_block_number(Fork::Istanbul), Fork::Istanbul),
-            (to_block_number(Fork::Istanbul), Fork::Istanbul),
+            block_fork(Fork::Frontier),
+            block_fork(Fork::Thawing),
+            block_fork(Fork::Homestead),
+            block_fork(Fork::Dao),
+            block_fork(Fork::Tangerine),
+            block_fork(Fork::Spurious),
+            block_fork(Fork::Byzantium),
+            block_fork(Fork::Constantinople),
+            block_fork(Fork::Istanbul),
+            block_fork(Fork::Istanbul),
         ];
         assert!(number != 0, "block number must be greater than 0");
         let pos = block_forks.iter().position(|(x, _)| *x > number);
