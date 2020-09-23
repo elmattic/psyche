@@ -1214,21 +1214,22 @@ impl BbInfo {
 }
 
 pub struct VmRom {
-    data: [u8; VmRom::SIZE],
+    data: [u8; Self::SIZE],
 }
 
 impl VmRom {
     /// EIP-170 states a max contract code size of 2**14 + 2**13, we round it
     /// to the next power of two.
     const MAX_CODESIZE: usize = 32768;
-    const JUMPDESTS_SIZE: usize = VmRom::MAX_CODESIZE / 8;
-    const BB_INFOS_SIZE: usize = VmRom::MAX_CODESIZE * std::mem::size_of::<BbInfo>();
-    const SIZE: usize = VmRom::MAX_CODESIZE + VmRom::JUMPDESTS_SIZE + VmRom::BB_INFOS_SIZE;
-    const BB_INFOS_OFFSET: usize = VmRom::MAX_CODESIZE + VmRom::JUMPDESTS_SIZE;
+    const INVALID_DESTS_SIZE: usize = Self::MAX_CODESIZE / 8;
+    const BB_INFOS_SIZE: usize = Self::MAX_CODESIZE * std::mem::size_of::<BbInfo>();
+    const SIZE: usize = Self::MAX_CODESIZE + Self::INVALID_DESTS_SIZE + Self::BB_INFOS_SIZE;
+    const INVALID_DESTS_OFFSET: usize = Self::MAX_CODESIZE;
+    const BB_INFOS_OFFSET: usize = Self::MAX_CODESIZE + Self::INVALID_DESTS_SIZE;
 
     pub fn new() -> VmRom {
         VmRom {
-            data: [0; VmRom::SIZE],
+            data: [0; Self::SIZE],
         }
     }
 
@@ -1236,13 +1237,22 @@ impl VmRom {
         self.data.as_ptr()
     }
 
+    fn is_valid_dest(&self, addr: isize) -> bool {
+        let ptr = unsafe {
+            self.data
+                .as_ptr()
+                .offset(Self::INVALID_DESTS_OFFSET as isize)
+        };
+        let mask = unsafe { *(ptr as *const u32).offset(addr / 32) };
+        let bit = 1 << (addr % 32);
+        (mask & bit) == 0
+    }
+
     fn is_jumpdest(&self, addr: u64) -> bool {
-        let jump_dests =
-            unsafe { self.data.as_ptr().offset(VmRom::MAX_CODESIZE as isize) as *mut u64 };
-        let offset = (addr % (VmRom::MAX_CODESIZE as u64)) as isize;
-        let bits = unsafe { *jump_dests.offset(offset / 64) };
-        let mask = 1u64 << (offset % 64);
-        (bits & mask) != 0
+        let addr = (addr as isize) % (Self::MAX_CODESIZE as isize);
+        let code = unsafe { *self.code().offset(addr) };
+        let opcode = unsafe { std::mem::transmute::<u8, Opcode>(code) };
+        (opcode == Opcode::JUMPDEST) & self.is_valid_dest(addr)
     }
 
     fn get_bb_info(&self, addr: u64) -> &BbInfo {
@@ -1437,34 +1447,27 @@ impl VmRom {
         {
             unimplemented!();
         }
-        // write valid jump destinations
-        let jump_dests_offset = VmRom::MAX_CODESIZE as isize;
-        let jump_dests = unsafe { self.data.as_mut_ptr().offset(jump_dests_offset) as *mut u64 };
-        let mut bits: u64 = 0;
+        // write invalid jump destinations
+        let offset = Self::INVALID_DESTS_OFFSET as isize;
+        let invalid_dests_ptr = unsafe { self.data.as_mut_ptr().offset(offset) as *mut u8 };
         let mut i: usize = 0;
         while i < bytecode.len() {
-            // save i for later in j
-            let j = i;
             let code = bytecode[i];
             let opcode = unsafe { std::mem::transmute::<u8, EvmOpcode>(code) };
             if opcode.is_push() {
                 let num_bytes = opcode.push_index() + 1;
-                i += 1 + num_bytes;
-            } else {
-                if opcode == EvmOpcode::JUMPDEST {
-                    bits |= 1u64 << (i % 64);
+                let mask: u64 = (1 << num_bytes) - 1;
+                let j = (i + 1) as isize;
+                let byte_offset = j / 8;
+                let bit_offset = j % 8;
+                unsafe {
+                    let ptr = invalid_dests_ptr.offset(byte_offset) as *mut u32;
+                    *ptr |= (mask as u32) << bit_offset;
                 }
-                i += 1;
+                i += num_bytes;
             }
-            let do_write = (j % 64) > (i % 64);
-            if do_write {
-                let offset = (j / 64) as isize;
-                unsafe { *jump_dests.offset(offset) = bits }
-                bits = 0;
-            }
+            i += 1;
         }
-        let offset = (i / 64) as isize;
-        unsafe { *jump_dests.offset(offset) = bits }
         //
         self.write_bb_infos(bytecode, schedule);
     }

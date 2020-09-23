@@ -20,20 +20,26 @@ mod tests {
     use psyche::schedule::{Fork, Schedule};
     use psyche::u256::U256;
     use psyche::utils;
-    use psyche::vm::{run_evm, VmMemory, VmRom};
+    use psyche::vm::{run_evm, VmError, VmMemory, VmRom};
 
     const TEST_GAS: u64 = 20_000_000_000_000;
 
     macro_rules! vm_assert_eq {
         ($input:expr, $expected:expr) => {
-            vm_internal_assert_eq($input, $expected, U256::from_u64(TEST_GAS), Fork::Frontier)
+            assert_eq($input, $expected, U256::from_u64(TEST_GAS), Fork::Frontier)
         };
         ($input:expr, $expected:expr, $fork:expr) => {
-            vm_internal_assert_eq($input, $expected, U256::from_u64(TEST_GAS), $fork)
+            assert_eq($input, $expected, U256::from_u64(TEST_GAS), $fork)
         };
     }
 
-    fn vm_internal_assert_eq(input: &str, expected: &str, gas_limit: U256, fork: Fork) {
+    macro_rules! vm_assert_error_eq {
+        ($input:expr, $expected:expr) => {
+            assert_error_eq($input, $expected)
+        };
+    }
+
+    fn assert_eq(input: &str, expected: &str, gas_limit: U256, fork: Fork) {
         let schedule = Schedule::from_fork(fork);
         let bytes = assembler::from_string(input).unwrap();
         //
@@ -49,6 +55,23 @@ mod tests {
         };
         let ref_word = utils::decode_hex(expected).unwrap();
         assert_eq!(word, ref_word);
+    }
+
+    fn assert_error_eq(input: &str, expected: VmError) {
+        let fork = Fork::Frontier;
+        let gas_limit = U256::from_u64(TEST_GAS);
+        let schedule = Schedule::from_fork(fork);
+        let bytes = assembler::from_string(input).unwrap();
+        //
+        let mut rom = VmRom::new();
+        rom.init(&bytes, &schedule);
+        let mut memory = VmMemory::new();
+        memory.init(gas_limit);
+        let error = unsafe {
+            let ret_data = run_evm(&bytes, &rom, &schedule, gas_limit, &mut memory);
+            ret_data.error
+        };
+        assert_eq!(error, expected);
     }
 
     #[test]
@@ -2657,6 +2680,18 @@ mod tests {
             retword
             ",
             "0000000000000000000000000000000000000000000000000000000000000000"
+        );
+    }
+
+    #[test]
+    fn opcode_jump_1() {
+        vm_assert_error_eq!(
+            "
+            PUSH2 0x5b00
+            PUSH1 0x01
+            JUMP
+            ",
+            VmError::InvalidJumpDest
         );
     }
 
