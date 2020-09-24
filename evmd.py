@@ -86,41 +86,65 @@ class EVMDCmd(Cmd):
         result += int(value.GetChildAtIndex(3).GetValue()) << 192
         return result
 
-    def _print_state(self, frame):
-        if self.disasm is None:
-            self.disasm = Disassembly(frame)
-
-        # print machine registers (pc, gas, stsize, stack)
-        stack_start_var = frame.FindVariable("stack_start")
-        stack_size = int(frame.FindVariable("ssize").GetValue())
-        memory_size = int(frame.FindVariable("msize").GetValue())
-        stackdata = stack_start_var.GetPointeeData(0, stack_size * 32)
-        bytes_str = b"".join(map(lambda x: bytes(bytearray([x])), stackdata.uint8))
+    def _build_list(self, bytes_str, stack_size, slots, is_word=True):
         stack = []
         for i in range(stack_size):
             value = 0
-            for j in range(4):
-                offset = i*32 + j*8
-                temp = bytes_str[offset:(offset+8)]
-                x = struct.unpack("<Q", temp)
-                value = value + (x[0] << (j*64))
+            if is_word:
+                for j in range(4):
+                    offset = i*32 + j*8
+                    temp = bytes_str[offset:(offset+8)]
+                    x = struct.unpack("<Q", temp)
+                    value = value + (x[0] << (j*64))
+            else:
+                offset = i*4
+                temp = bytes_str[offset:(offset+4)]
+                x = struct.unpack("<L", temp)
+                value = x[0]
             stack.append(value)
         stack_str = ""
-        slots = 16
-        if self.hex_stack_format:
-            formatter = lambda v: "0x{:064x}".format(v)
+        if is_word:
+            if self.hex_stack_format:
+                formatter = lambda v: "{:064x}".format(v)
+            else:
+                formatter = lambda v: str(v)
         else:
-            formatter = lambda v: str(v)
+            # formatter is always hex for the return stack
+            formatter = lambda v: "{:04x}".format(v)
         if stack_size > slots:
             stack_str += "[..., " + ", ".join(map(formatter, stack[-slots:])) + "]"
         else:
             stack_str += "[" + ", ".join(map(formatter, stack)) + "]"
+        return stack_str
+
+    def _print_state(self, frame):
+        if self.disasm is None:
+            self.disasm = Disassembly(frame)
+            self.show_rstack = False
+            for x in self.disasm.instructions.values():
+                if "BEGINSUB" in x or "RETURNSUB" in x or "JUMPSUB" in x:
+                    self.show_rstack = True
+                    break
+
+        # print machine registers (pc, gas, stsize, msize, st)
         pc = int(frame.FindVariable("pc").GetValue())
-        #arr = frame.FindVariable("gas").GetChildAtIndex(0)
-        #gas = self._u64_array_to_int(arr)
         gas = int(frame.FindVariable("gas").GetValue())
-        hud_str = "pc: {:04x}    gas: {:,}    ssize: {}    msize: {}\nstack: {}"
-        print(hud_str.format(pc, gas, stack_size, memory_size, stack_str))
+        stsize = int(frame.FindVariable("stsize").GetValue())
+        rssize = int(frame.FindVariable("rssize").GetValue())
+        msize = int(frame.FindVariable("msize").GetValue())
+        stack_start_var = frame.FindVariable("stack_start")
+        rstack_start_var = frame.FindVariable("rstack_start")
+        stackdata = stack_start_var.GetPointeeData(0, stsize * 32)
+        rstackdata = rstack_start_var.GetPointeeData(0, rssize * 4)
+        stack_bytes_str = b"".join(map(lambda x: bytes(bytearray([x])), stackdata.uint8))
+        rstack_bytes_str = b"".join(map(lambda x: bytes(bytearray([x])), rstackdata.uint8))
+        stack_str = self._build_list(stack_bytes_str, stsize, 16)
+        rstack_str = self._build_list(rstack_bytes_str, rssize, 16, False)
+        if self.show_rstack:
+            hud_str = "pc: {:04x}    gas: {:,}    stsize: {}    rssize: {rssize}    msize: {}\nst: {}\nrs: {rs}"
+        else:
+            hud_str = "pc: {:04x}    gas: {:,}    stsize: {}    msize: {}\nst: {}"
+        print(hud_str.format(pc, gas, stsize, msize, stack_str, rssize=rssize, rs=rstack_str))
 
         # print instructions window
         index = list(self.disasm.instructions).index(pc)

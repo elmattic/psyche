@@ -376,6 +376,8 @@ impl EvmOpcode {
             EvmOpcode::STOP
             | EvmOpcode::JUMP
             | EvmOpcode::JUMPI
+            | EvmOpcode::JUMPSUB
+            | EvmOpcode::RETURNSUB
             | EvmOpcode::INVALID
             | EvmOpcode::GAS => true,
             _ => false,

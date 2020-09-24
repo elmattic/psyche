@@ -15,6 +15,7 @@
 // along with Psyche. If not, see <http://www.gnu.org/licenses/>.
 
 use std::convert::TryFrom;
+use std::mem::MaybeUninit;
 
 use crate::instructions::{EvmOpcode, Opcode};
 use crate::schedule::{Fee, Fork, Schedule};
@@ -287,6 +288,7 @@ pub enum VmError {
     OutOfGas,
     InvalidJumpDest,
     InvalidInstruction,
+    InvalidBeginSub,
 }
 
 struct VmStackSlots([U256; VmStack::LEN]);
@@ -346,6 +348,39 @@ impl VmStack {
     pub unsafe fn size(&self) -> usize {
         const WORD_SIZE: usize = std::mem::size_of::<U256>();
         usize::wrapping_sub(self.sp.offset(1) as _, self.start as _) / WORD_SIZE
+    }
+}
+
+struct VmReturnStack {
+    values: [u32; Self::LEN],
+    size: isize,
+}
+
+impl VmReturnStack {
+    pub const LEN: usize = 1023;
+
+    pub unsafe fn new() -> VmReturnStack {
+        VmReturnStack {
+            values: MaybeUninit::uninit().assume_init(),
+            size: -1,
+        }
+    }
+
+    pub unsafe fn push(&mut self, value: u32) -> bool {
+        let not_overflow = self.size() < Self::LEN;
+        self.size += 1;
+        *self.values.as_mut_ptr().offset(self.size) = value;
+        not_overflow
+    }
+
+    pub unsafe fn pop(&mut self) -> u32 {
+        let temp = *self.values.as_mut_ptr().offset(self.size);
+        self.size -= 1;
+        temp
+    }
+
+    pub unsafe fn size(&self) -> usize {
+        (self.size + 1) as usize
     }
 }
 
@@ -602,18 +637,20 @@ impl ReturnData {
     }
 }
 
-fn lldb_hook_single_step(pc: usize, gas: u64, ssize: usize, msize: usize) {}
-fn lldb_hook_stop(pc: usize, gas: u64, ssize: usize, msize: usize) {}
+fn lldb_hook_single_step(pc: usize, gas: u64, stsize: usize, rssize: usize, msize: usize) {}
+fn lldb_hook_stop(pc: usize, gas: u64, stsize: usize, rssize: usize, msize: usize) {}
 
 macro_rules! lldb_hook {
-    ($pc:expr, $gas:expr, $stack:ident, $memory:ident, $hook:ident) => {
+    ($pc:expr, $gas:expr, $stack:ident, $rstack:ident, $memory:ident, $hook:ident) => {
         #[cfg(debug_assertions)]
         {
             let stack_start = $stack.start;
+            let rstack_start = $rstack.values.as_ptr();
             let gas = $gas;
-            let ssize = $stack.size();
+            let stsize = $stack.size();
+            let rssize = $rstack.size();
             let msize = $memory.size();
-            $hook($pc, gas, ssize, msize);
+            $hook($pc, gas, stsize, rssize, msize);
         }
     };
 }
@@ -628,6 +665,7 @@ pub unsafe fn run_evm(
     // TODO: use MaybeUninit
     let mut slots: VmStackSlots = std::mem::uninitialized();
     let mut stack: VmStack = VmStack::new(&mut slots);
+    let mut rstack = VmReturnStack::new();
     let code: *const Opcode = rom.code() as *const Opcode;
     let mut pc: usize = 0;
     let mut gas = gas_limit.low_u64();
@@ -640,11 +678,11 @@ pub unsafe fn run_evm(
     }
     loop {
         let opcode = *code.offset(pc as isize);
-        lldb_hook!(pc, gas, stack, memory, lldb_hook_single_step);
+        lldb_hook!(pc, gas, stack, rstack, memory, lldb_hook_single_step);
         //println!("{:?}", opcode);
         match opcode {
             Opcode::STOP => {
-                lldb_hook!(pc, gas, stack, memory, lldb_hook_stop);
+                lldb_hook!(pc, gas, stack, rstack, memory, lldb_hook_stop);
                 break;
             }
             Opcode::ADD => {
@@ -1019,7 +1057,41 @@ pub unsafe fn run_evm(
                 //
                 pc += 1;
             }
-            Opcode::BEGINSUB | Opcode::RETURNSUB | Opcode::JUMPSUB => unimplemented!(),
+            Opcode::BEGINSUB => {
+                comment!("opBEGINSUB");
+                error = VmError::OutOfGas;
+                break;
+            }
+            Opcode::RETURNSUB => {
+                comment!("opRETURNSUB");
+                if rstack.size() > 0 {
+                    let addr = rstack.pop() as usize;
+                    pc = addr as usize;
+                    check_exception_at!(addr as u64, gas, rom, stack, error);
+                    break;
+                }
+                error = VmError::OutOfGas;
+                break;
+            }
+            Opcode::JUMPSUB => {
+                comment!("opJUMPSUB");
+                let addr = stack.pop();
+                let in_bounds = is_ltpow2_u256(addr, VmRom::MAX_CODESIZE);
+                let low = addr.low_u64();
+                if rstack.push(pc as u32 + 1) {
+                    if in_bounds & rom.is_beginsub(low) {
+                        pc = low as usize + 1;
+                        check_exception_at!(low, gas, rom, stack, error);
+                        break;
+                    } else {
+                        error = VmError::InvalidBeginSub;
+                        break;
+                    }
+                } else {
+                    error = VmError::OutOfGas;
+                    break;
+                }
+            }
             Opcode::PUSH1 => {
                 comment!("opPUSH1");
                 let result = *(code.offset(pc as isize + 1) as *const u8);
@@ -1172,7 +1244,7 @@ pub unsafe fn run_evm(
             | Opcode::CALL
             | Opcode::CALLCODE => unimplemented!(),
             Opcode::RETURN => {
-                lldb_hook!(pc, gas, stack, memory, lldb_hook_stop);
+                lldb_hook!(pc, gas, stack, rstack, memory, lldb_hook_stop);
                 comment!("opRETURN");
                 let offset = stack.pop_u256();
                 let size = stack.pop_u256();
@@ -1253,6 +1325,13 @@ impl VmRom {
         let code = unsafe { *self.code().offset(addr) };
         let opcode = unsafe { std::mem::transmute::<u8, Opcode>(code) };
         (opcode == Opcode::JUMPDEST) & self.is_valid_dest(addr)
+    }
+
+    fn is_beginsub(&self, addr: u64) -> bool {
+        let addr = (addr as isize) % (Self::MAX_CODESIZE as isize);
+        let code = unsafe { *self.code().offset(addr) };
+        let opcode = unsafe { std::mem::transmute::<u8, Opcode>(code) };
+        (opcode == Opcode::BEGINSUB) & self.is_valid_dest(addr)
     }
 
     fn get_bb_info(&self, addr: u64) -> &BbInfo {
