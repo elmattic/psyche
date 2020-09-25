@@ -30,9 +30,10 @@ use clap::{App, Arg, SubCommand};
 use std::convert::TryFrom;
 use std::fmt::{self, Write};
 use std::fs;
+use std::str::FromStr;
 
 use instructions::{EvmInstruction, EvmOpcode};
-use schedule::Schedule;
+use schedule::{Fork, Schedule};
 use u256::U256;
 use utils::{decode_hex, encode_hex, print_config};
 use vm::{run_evm, VmError, VmMemory, VmRom};
@@ -142,8 +143,8 @@ fn disasm(input: &str) {
     }
 }
 
-fn evm(bytes: &Vec<u8>, gas_limit: U256) {
-    let schedule = Schedule::default();
+fn evm(bytes: &Vec<u8>, fork: Fork, gas_limit: U256) {
+    let schedule = Schedule::from_fork(fork);
     let mut rom = VmRom::new();
     rom.init(&bytes, &schedule);
     let mut memory = VmMemory::new();
@@ -175,11 +176,11 @@ fn asm(filename: &str) {
     }
 }
 
-fn kick(filename: &str) {
+fn kick(filename: &str, fork: Fork) {
     let code = fs::read_to_string(filename).expect("Something went wrong reading the file");
     let result = assembler::from_string(&code);
     match result {
-        Ok(bytes) => evm(&bytes, U256::from_u64(VM_DEFAULT_GAS)),
+        Ok(bytes) => evm(&bytes, fork, U256::from_u64(VM_DEFAULT_GAS)),
         Err(e) => println!("{:?}", e),
     }
 }
@@ -221,6 +222,25 @@ fn main() {
                         .index(1)
                         .required(true)
                         .help("The .ass file to assemble and run"),
+                )
+                .arg(
+                    Arg::with_name("FORK")
+                        .long("fork")
+                        .short("f")
+                        .help("Fork you want to run on")
+                        .takes_value(true)
+                        .possible_values(&[
+                            "Frontier",
+                            "Thawing",
+                            "Homestead",
+                            "Dao",
+                            "Tangerine",
+                            "Spurious",
+                            "Byzantium",
+                            "Constantinople",
+                            "Istanbul",
+                            "Berlin",
+                        ]),
                 ),
         )
         .subcommand(
@@ -255,7 +275,7 @@ fn main() {
         }
         let hex_str = matches.value_of("CODE").unwrap();
         match decode_hex(hex_str) {
-            Ok(bytes) => evm(&bytes, gas),
+            Ok(bytes) => evm(&bytes, Fork::Frontier, gas),
             Err(e) => println!("{:?}", e),
         }
         return;
@@ -267,7 +287,8 @@ fn main() {
     }
     if let Some(matches) = matches.subcommand_matches("kick") {
         let filename = matches.value_of("INPUT").unwrap();
-        kick(filename);
+        let s = matches.value_of("FORK").unwrap_or("Frontier");
+        kick(filename, Fork::from_str(s).unwrap());
         return;
     }
     if let Some(matches) = matches.subcommand_matches("disasm") {

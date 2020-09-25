@@ -14,6 +14,8 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Psyche. If not, see <http://www.gnu.org/licenses/>.
 
+use std::str::FromStr;
+
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd)]
 pub enum Fork {
     Frontier,
@@ -29,6 +31,26 @@ pub enum Fork {
 }
 
 const FORK_LEN: usize = Fork::Berlin as usize + 1;
+
+impl FromStr for Fork {
+    type Err = ();
+
+    fn from_str(input: &str) -> Result<Fork, Self::Err> {
+        match input {
+            "Frontier" => Ok(Fork::Frontier),
+            "Thawing" => Ok(Fork::Thawing),
+            "Homestead" => Ok(Fork::Homestead),
+            "Dao" => Ok(Fork::Dao),
+            "Tangerine" => Ok(Fork::Tangerine),
+            "Spurious" => Ok(Fork::Spurious),
+            "Byzantium" => Ok(Fork::Byzantium),
+            "Constantinople" => Ok(Fork::Constantinople),
+            "Istanbul" => Ok(Fork::Istanbul),
+            "Berlin" => Ok(Fork::Berlin),
+            _ => Err(()),
+        }
+    }
+}
 
 pub fn to_block_number(fork: Fork) -> u64 {
     match fork {
