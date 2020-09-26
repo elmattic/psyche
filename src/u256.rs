@@ -249,31 +249,25 @@ pub unsafe fn load16_u256(src: *const U256, num_bytes: i32) -> U256 {
     #[cfg(target_feature = "avx2")]
     {
         let lane8_id = _mm256_set_epi8(
-            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
-            24, 25, 26, 27, 28, 29, 30, 31,
+            31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10,
+            9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
         );
-        let all_ones = _mm256_set_epi64x(-1, -1, -1, -1);
         //
         let src = src as *const __m128i;
         let value = _mm256_zextsi128_si256(_mm_loadu_si128(src));
-        let sfloor = _mm_set_epi32(0, 0, 0, (255 - 32) + num_bytes);
-        let floor = _mm256_broadcastb_epi8(sfloor);
-        let ssum = _mm256_adds_epu8(lane8_id, floor);
-        let mask = _mm256_cmpeq_epi8(ssum, all_ones);
+        let nbb = _mm256_broadcastb_epi8(_mm_set_epi32(0, 0, 0, num_bytes));
+        let mask = _mm256_cmpgt_epi8(nbb, lane8_id);
         return std::mem::transmute::<__m256i, U256>(_mm256_and_si256(value, mask));
     }
     #[cfg(target_feature = "ssse3")]
     {
-        let lane8_id = _mm_set_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
-        let all_ones = _mm_set_epi64x(-1, -1);
+        let lane8_id = _mm_set_epi8(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
         let zero = _mm_setzero_si128();
         //
         let src = src as *const __m128i;
         let value = _mm_loadu_si128(src);
-        let sfloor = _mm_set_epi32(0, 0, 0, (255 - 16) + num_bytes);
-        let floor = _mm_shuffle_epi8(sfloor, zero);
-        let ssum = _mm_adds_epu8(lane8_id, floor);
-        let mask = _mm_cmpeq_epi8(ssum, all_ones);
+        let nbb = _mm_shuffle_epi8(_mm_set_epi32(0, 0, 0, num_bytes), zero);
+        let mask = _mm_cmpgt_epi8(nbb, lane8_id);
         return std::mem::transmute::<(__m128i, __m128i), U256>((_mm_and_si128(value, mask), zero));
     }
     // generic target
@@ -295,31 +289,28 @@ pub unsafe fn load32_u256(src: *const U256, num_bytes: i32) -> U256 {
     #[cfg(target_feature = "avx2")]
     {
         let lane8_id = _mm256_set_epi8(
-            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
-            24, 25, 26, 27, 28, 29, 30, 31,
+            31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10,
+            9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
         );
         let all_ones = _mm256_set_epi64x(-1, -1, -1, -1);
         //
         let src = src as *const __m256i;
         let value = _mm256_loadu_si256(src);
-        let sfloor = _mm_set_epi32(0, 0, 0, (255 - 32) + num_bytes);
-        let floor = _mm256_broadcastb_epi8(sfloor);
-        let ssum = _mm256_adds_epu8(lane8_id, floor);
-        let mask = _mm256_cmpeq_epi8(ssum, all_ones);
+        let nbb = _mm256_broadcastb_epi8(_mm_set_epi32(0, 0, 0, num_bytes));
+        let mask = _mm256_cmpgt_epi8(nbb, lane8_id);
         return std::mem::transmute::<__m256i, U256>(_mm256_and_si256(value, mask));
     }
     #[cfg(target_feature = "ssse3")]
     {
-        let lane8_id = _mm_set_epi8(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
-        let all_ones = _mm_set_epi64x(-1, -1);
+        let lane8_id_hi = _mm_set_epi8(
+            31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16,
+        );
         //
         let src = src as *const __m128i;
         let valuelo = _mm_loadu_si128(src);
         let valuehi = _mm_loadu_si128(src.offset(1));
-        let sfloor = _mm_set_epi32(0, 0, 0, (255 - 32) + num_bytes);
-        let floor = _mm_shuffle_epi8(sfloor, _mm_setzero_si128());
-        let ssum = _mm_adds_epu8(lane8_id, floor);
-        let mask = _mm_cmpeq_epi8(ssum, all_ones);
+        let nbb = _mm_shuffle_epi8(_mm_set_epi32(0, 0, 0, num_bytes), _mm_setzero_si128());
+        let mask = _mm_cmpgt_epi8(nbb, lane8_id_hi);
         return std::mem::transmute::<(__m128i, __m128i), U256>((
             valuelo,
             _mm_and_si128(valuehi, mask),
