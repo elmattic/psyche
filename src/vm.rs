@@ -662,8 +662,7 @@ pub unsafe fn run_evm(
     gas_limit: U256,
     memory: &mut VmMemory,
 ) -> ReturnData {
-    // TODO: use MaybeUninit
-    let mut slots: VmStackSlots = std::mem::uninitialized();
+    let mut slots: VmStackSlots = MaybeUninit::uninit().assume_init();
     let mut stack: VmStack = VmStack::new(&mut slots);
     let mut rstack = VmReturnStack::new();
     let code: *const Opcode = rom.code() as *const Opcode;
