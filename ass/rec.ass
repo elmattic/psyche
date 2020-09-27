@@ -1,0 +1,40 @@
+
+%define jz($label)
+    DUP1
+    ISZERO
+    $label
+    JUMPI
+%end
+
+%define dec()
+    1
+    SWAP1
+    SUB
+%end
+
+%define n() 5
+
+    _start
+    JUMP
+    
+; this subroutine pops n off the stack, computes n! then pushes it back
+    BEGINSUB     ; 0x0004
+    jz(done)
+    DUP1
+    dec
+    PUSH2 0x0004
+    JUMPSUB
+    MUL
+    RETURNSUB
+done:
+    POP
+    1
+    RETURNSUB
+
+; ideally we would like to support %subroutine directly in the assembler
+
+_start:
+    n
+    PUSH2 0x0004
+    JUMPSUB
+    retword
