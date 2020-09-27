@@ -292,7 +292,6 @@ pub unsafe fn load32_u256(src: *const U256, num_bytes: i32) -> U256 {
             31, 30, 29, 28, 27, 26, 25, 24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10,
             9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
         );
-        let all_ones = _mm256_set_epi64x(-1, -1, -1, -1);
         //
         let src = src as *const __m256i;
         let value = _mm256_loadu_si256(src);
