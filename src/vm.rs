@@ -114,7 +114,7 @@ const OPCODE_INFOS: [(Fork, Fee, u16, u16); 256] = [
     (Fork::Frontier, Fee::Base, 0, 1),     /* MSIZE = 0x59 */
     (Fork::Frontier, Fee::Base, 0, 1),     /* GAS = 0x5a */
     (Fork::Frontier, Fee::Jumpdest, 0, 0), /* JUMPDEST = 0x5b */
-    (Fork::Berlin, Fee::Base, 0, 0),       /* BEGINSUB = 0x5c */
+    (Fork::Berlin, Fee::Zero, 0, 0),       /* BEGINSUB = 0x5c */
     (Fork::Berlin, Fee::Low, 0, 0),        /* RETURNSUB = 0x5d */
     (Fork::Berlin, Fee::High, 1, 0),       /* JUMPSUB = 0x5e */
     (Fork::Frontier, Fee::Zero, 0, 0),
@@ -289,6 +289,9 @@ pub enum VmError {
     InvalidJumpDest,
     InvalidInstruction,
     InvalidBeginSub,
+    BeginSubEntry,
+    ReturnStackUnderflow,
+    ReturnStackOverflow,
 }
 
 struct VmStackSlots([U256; VmStack::LEN]);
@@ -1058,7 +1061,7 @@ pub unsafe fn run_evm(
             }
             Opcode::BEGINSUB => {
                 comment!("opBEGINSUB");
-                error = VmError::OutOfGas;
+                error = VmError::BeginSubEntry;
                 break;
             }
             Opcode::RETURNSUB => {
@@ -1069,7 +1072,7 @@ pub unsafe fn run_evm(
                     check_exception_at!(addr as u64, gas, rom, stack, error);
                     break;
                 }
-                error = VmError::OutOfGas;
+                error = VmError::ReturnStackUnderflow;
                 break;
             }
             Opcode::JUMPSUB => {
@@ -1087,7 +1090,7 @@ pub unsafe fn run_evm(
                         break;
                     }
                 } else {
-                    error = VmError::OutOfGas;
+                    error = VmError::ReturnStackOverflow;
                     break;
                 }
             }

@@ -33,9 +33,15 @@ mod tests {
         };
     }
 
+    macro_rules! vm_assert_ok {
+        ($input:expr, $fork:expr) => {
+            assert_error_eq($input, VmError::None, $fork)
+        };
+    }
+
     macro_rules! vm_assert_error_eq {
         ($input:expr, $expected:expr) => {
-            assert_error_eq($input, $expected)
+            assert_error_eq($input, $expected, Fork::Frontier)
         };
     }
 
@@ -57,8 +63,7 @@ mod tests {
         assert_eq!(word, ref_word);
     }
 
-    fn assert_error_eq(input: &str, expected: VmError) {
-        let fork = Fork::Frontier;
+    fn assert_error_eq(input: &str, expected: VmError, fork: Fork) {
         let gas_limit = U256::from_u64(TEST_GAS);
         let schedule = Schedule::from_fork(fork);
         let bytes = assembler::from_string(input).unwrap();
@@ -2722,6 +2727,86 @@ mod tests {
             retword
             ",
             "0000000000000000000000000000000000000000000000000000000000000000"
+        );
+    }
+
+    // Simple subroutine
+    #[test]
+    fn opcode_jumpsub_0() {
+        vm_assert_ok!(
+            "
+            PUSH1 0x04
+            JUMPSUB
+            STOP
+            BEGINSUB
+            RETURNSUB
+            ",
+            Fork::Berlin
+        );
+    }
+
+    // Two levels of subroutines
+    #[test]
+    fn opcode_jumpsub_1() {
+        vm_assert_ok!(
+            "
+            PUSH9 0x00000000000000000c
+            JUMPSUB
+            STOP
+            BEGINSUB
+            PUSH1 0x11
+            JUMPSUB
+            RETURNSUB
+            BEGINSUB
+            RETURNSUB
+            ",
+            Fork::Berlin
+        );
+    }
+
+    // Subroutine at end of code
+    #[test]
+    fn opcode_jumpsub_2() {
+        vm_assert_ok!(
+            "
+            PUSH1 0x05
+            JUMP
+            BEGINSUB
+            RETURNSUB
+            JUMPDEST
+            PUSH1 0x03
+            JUMPSUB
+            ",
+            Fork::Berlin
+        );
+    }
+    
+    // 1023 levels of subroutines
+    #[test]
+    fn opcode_jumpsub_3() {
+        vm_assert_ok!(
+            "
+            PUSH2 0x0015
+            JUMP
+            BEGINSUB
+            DUP1
+            ISZERO
+            PUSH2 0x0013
+            JUMPI
+            PUSH1 0x01
+            SWAP1
+            SUB
+            PUSH2 0x0004
+            JUMPSUB
+            JUMPDEST
+            RETURNSUB
+            JUMPDEST
+            PUSH2 0x03fe
+            PUSH2 0x0004
+            JUMPSUB
+            POP
+            ",
+            Fork::Berlin
         );
     }
 

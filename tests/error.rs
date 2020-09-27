@@ -23,7 +23,7 @@ mod tests {
 
     const TEST_GAS: u64 = 20_000_000_000_000;
 
-    fn vm_assert_eq(input: &str, expected: Result<u64, VmError>, fork: Fork) {
+    fn vm_assert_eq(input: &str, expected: VmError, fork: Fork) {
         let schedule = Schedule::from_fork(fork);
         let gas_limit = U256::from_u64(TEST_GAS);
         let bytes = assembler::from_string(input).unwrap();
@@ -32,84 +32,92 @@ mod tests {
         rom.init(&bytes, &schedule);
         let mut memory = VmMemory::new();
         memory.init(gas_limit);
-        let (gas_used, err) = unsafe {
+        let err = unsafe {
             let ret_data = run_evm(&bytes, &rom, &schedule, gas_limit, &mut memory);
-            (TEST_GAS.wrapping_sub(ret_data.gas), ret_data.error)
+            ret_data.error
         };
-        if err == VmError::None {
-            assert_eq!(Ok(gas_used), expected);
-        } else {
-            assert_eq!(Err(err), expected)
-        }
+        assert_eq!(err, expected)
     }
 
+    // Error on 'walk-into-subroutine'
     #[test]
-    fn gas_sha3_0() {
+    fn error_beginsub_0() {
         vm_assert_eq(
             "
-            PUSH1 0x00
-            PUSH1 0x00
-            SHA3
+            BEGINSUB
             ",
-            Ok(3 + 3 + (30 + (0 * 6)) + (0 + (3 * 0))),
-            Fork::default(),
+            VmError::BeginSubEntry,
+            Fork::Berlin,
         );
     }
 
+    // Invalid jump
     #[test]
-    fn gas_sha3_1() {
+    fn error_beginsub_1() {
         vm_assert_eq(
             "
+            PUSH9 0x01000000000000000c
+            JUMPSUB
+            STOP
+            BEGINSUB
+            PUSH1 0x11
+            JUMPSUB
+            RETURNSUB
+            BEGINSUB
+            RETURNSUB
+            ",
+            VmError::InvalidBeginSub,
+            Fork::Berlin,
+        );
+    }
+
+    // Invalid jump inside a push
+    #[test]
+    fn error_beginsub_2() {
+        vm_assert_eq(
+            "
+            PUSH1 0x04
+            JUMPSUB
+            PUSH2 0x003f ; 0x3f is BEGINSUB in VmRom and push bytes are swapped
+            ",
+            VmError::InvalidBeginSub,
+            Fork::Berlin,
+        );
+    }
+
+    // Return stack overflow
+    #[test]
+    fn error_jumpsub_0() {
+        vm_assert_eq(
+            "
+            PUSH2 0x0015
+            JUMP
+            BEGINSUB
+            DUP1
+            ISZERO
+            PUSH2 0x0013
+            JUMPI
             PUSH1 0x01
-            PUSH1 0x00
-            SHA3
+            SWAP1
+            SUB
+            PUSH2 0x0004
+            JUMPSUB
+            JUMPDEST
+            RETURNSUB
+            JUMPDEST
+            PUSH2 0x03ff
+            PUSH2 0x0004
+            JUMPSUB
+            POP
             ",
-            Ok(3 + 3 + (30 + (1 * 6)) + (0 + (3 * 1))),
-            Fork::default(),
+            VmError::ReturnStackOverflow,
+            Fork::Berlin
         );
     }
 
+    // Error on invalid instruction
     #[test]
-    fn gas_sha3_2() {
-        vm_assert_eq(
-            "
-            PUSH1 0x21
-            PUSH1 0x00
-            SHA3
-            ",
-            Ok(3 + 3 + (30 + (2 * 6)) + (0 + (3 * 2))),
-            Fork::default(),
-        );
-    }
-
-    #[test]
-    fn gas_sha3_3() {
-        vm_assert_eq(
-            "
-            PUSH2 0x02e0
-            PUSH1 0x00
-            SHA3
-            ",
-            Ok(3 + 3 + (30 + (23 * 6)) + (1 + (3 * 23))),
-            Fork::default(),
-        );
-    }
-
-    #[test]
-    fn gas_sha3_4() {
-        vm_assert_eq(
-            "
-            PUSH8 0x3fffffffffffffff
-            PUSH1 0x00
-            SHA3
-            ",
-            Err(VmError::OutOfGas),
-            Fork::default(),
-        );
-    }
-
-    #[test]
-    fn gas_jumpsub_0() {
+    fn error_jumpsub_1() {
         vm_assert_eq(
             "
             PUSH1 0x04
@@ -118,8 +126,20 @@ mod tests {
             BEGINSUB
             RETURNSUB
             ",
-            Ok(3 + 10 + 5 + 0),
-            Fork::Berlin
+            VmError::InvalidInstruction,
+            Fork::Istanbul,
+        );
+    }
+
+    // Shallow return stack
+    #[test]
+    fn error_returnsub_0() {
+        vm_assert_eq(
+            "
+            RETURNSUB
+            ",
+            VmError::ReturnStackUnderflow,
+            Fork::Berlin,
         );
     }
 }
