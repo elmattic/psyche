@@ -8,6 +8,7 @@
    in stable Rust.
    - [ ] Implement a register-based VM.
 - [x] Explore around using special CPU instructions to speed up most opcodes.
+   - [ ] Implement a 64-bit NEON path for aarch64.
 - [x] Support a generic target for best portability (64-bit and 32-bit CPUs).
 - [x] Optimize for the worst-case (do not optimize average-case at the expense of
    worst-case).
