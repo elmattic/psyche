@@ -12,7 +12,6 @@
 - [x] Support a generic target for best portability (64-bit and 32-bit CPUs).
 - [x] Optimize for the worst-case (do not optimize average-case at the expense of
    worst-case).
-- [ ] Improve Rust compiler for better opcode dispatch via ```indirectbr``` instruction.
 - [ ] Support the EVMC low-level ABI and integrate in OpenEthereum client.
 
 ## Build
