@@ -7,12 +7,10 @@
 - [x] Research, implement and optimize interpretation of EVM bytecode
    in stable Rust.
    - [ ] Implement a register-based VM.
-- [x] Explore around using special CPU instructions to speed up most opcodes.
-   - [ ] Implement a NEON path for aarch64.
-- [x] Support a generic target for best portability (64-bit and 32-bit CPUs).
+- [ ] Explore around using simd instructions to speed up 256-bit math and precompiles.
 - [x] Optimize for the worst-case (do not optimize average-case at the expense of
    worst-case).
-- [ ] Support the EVMC low-level ABI and integrate in OpenEthereum client.
+- [ ] First class support for ```wasm32-unknown-unknown```.
 
 ## Build
 
