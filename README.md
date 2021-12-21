@@ -11,6 +11,7 @@
 - [x] Optimize for the worst-case (do not optimize average-case at the expense of
    worst-case).
 - [ ] First class support for ```wasm32-unknown-unknown```.
+- [ ] Optional gas metering
 
 ## Build
 
