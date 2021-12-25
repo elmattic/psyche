@@ -21,7 +21,7 @@ use nom::character::complete::{
     oct_digit1,
 };
 use nom::combinator::{map, not, opt, recognize, value};
-use nom::multi::{many0, many0_count, many1, separated_list};
+use nom::multi::{many0, many0_count, many1, separated_list0};
 use nom::sequence::{delimited, pair, preceded, terminated, tuple};
 use nom::IResult;
 use num_bigint::BigUint;
@@ -191,7 +191,7 @@ impl Display for ErrorCode {
                         String::from(b)
                     }
                 };
-                write!(f, "too {} arguments to macro call `{}`, expected {} argument{}, have {} argument{}", 
+                write!(f, "too {} arguments to macro call `{}`, expected {} argument{}, have {} argument{}",
                     if params < args { "many" } else { "few" },
                     s.0,
                     plural(*params, &params.to_string(), "single"),
@@ -240,7 +240,7 @@ fn macro_parameters(i: &str) -> IResult<&str, Vec<Symbol>> {
         blank,
         delimited(
             char('('),
-            separated_list(delimited(blank, char(','), blank), parameter),
+            separated_list0(delimited(blank, char(','), blank), parameter),
             char(')'),
         ),
     )(i)
@@ -251,7 +251,7 @@ fn macro_arguments(i: &str) -> IResult<&str, Vec<BlockVec>> {
         blank,
         delimited(
             char('('),
-            separated_list(delimited(blank, char(','), blank), many1(block)),
+            separated_list0(delimited(blank, char(','), blank), many1(block)),
             char(')'),
         ),
     )(i)

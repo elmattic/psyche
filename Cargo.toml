@@ -3,7 +3,7 @@ name = "psyche"
 version = "0.1.0"
 authors = ["elmattic <elmattic@users.noreply.github.com>"]
 licence = "GPL-3.0"
-edition = "2018"
+edition = "2021"
 
 [features]
 default = []
@@ -17,7 +17,7 @@ num_enum = "0.4.1"
 ethereum-types = "0.7.0"
 uint = "~0.8"
 memmap = "0.7.0"
-nom = "5.1.2"
+nom = "7.1.0"
 num-bigint = "0.2"
 
 [profile.release]

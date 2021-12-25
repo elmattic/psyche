@@ -458,7 +458,7 @@ impl VmMemory {
                     self.ptr = mmap.as_mut_ptr();
                     self.mmap = Some(mmap);
                 }
-                Err(e) => panic!(e),
+                Err(e) => panic!("{}", e),
             }
         }
     }
