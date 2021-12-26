@@ -10,7 +10,7 @@
 - [ ] Explore around using simd instructions to speed up 256-bit math and precompiles.
 - [x] Optimize for the worst-case (do not optimize average-case at the expense of
    worst-case).
-- [ ] First class support for ```wasm32-unknown-unknown```.
+- [ ] First class support for ```wasm32-unknown-unknown``` and [simd128](https://doc.rust-lang.org/stable/core/arch/wasm32/index.html#simd).
 - [ ] Optional gas metering
 
 ## Build
