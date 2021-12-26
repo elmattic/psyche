@@ -14,6 +14,9 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with Psyche. If not, see <http://www.gnu.org/licenses/>.
 
+use std::ops::Mul;
+use std::ops::MulAssign;
+
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::*;
 use std::mem::MaybeUninit;
@@ -89,6 +92,30 @@ impl U256 {
 
     pub fn le_u64(&self) -> bool {
         (self.0[1] == 0) & (self.0[2] == 0) & (self.0[3] == 0)
+    }
+
+    pub fn fullmul(self, other: U256) -> U512 {
+        let mut result: [u64; 8] = unsafe { std::mem::uninitialized() };
+        mul_limbs(4, &self.0, &other.0, &mut result);
+        U512(result)
+    }
+}
+
+impl Mul for U256 {
+    type Output = Self;
+
+    fn mul(self, other: U256) -> U256 {
+        let mut result: [u64; 8] = unsafe { std::mem::uninitialized() };
+        mul_limbs(4, &self.0, &other.0, &mut result);
+        U256([result[0], result[1], result[2], result[3]])
+    }
+}
+
+impl MulAssign for U256 {
+    fn mul_assign(&mut self, other: U256) {
+        let mut result: [u64; 8] = unsafe { std::mem::uninitialized() };
+        mul_limbs(4, &self.0, &other.0, &mut result);
+        self.0 = [result[0], result[1], result[2], result[3]];
     }
 }
 
@@ -1065,18 +1092,6 @@ fn mul_limbs(num_limbs: usize, a: &[u64], b: &[u64], c: &mut [u64]) {
     }
 }
 
-pub fn mul_u256(a: U256, b: U256) -> U256 {
-    let mut c: [u64; 8] = unsafe { std::mem::uninitialized() };
-    mul_limbs(4, &a.0, &b.0, &mut c);
-    U256([c[0], c[1], c[2], c[3]])
-}
-
-pub fn fullmul_u256(a: U256, b: U256) -> U512 {
-    let mut c: [u64; 8] = unsafe { std::mem::uninitialized() };
-    mul_limbs(4, &a.0, &b.0, &mut c);
-    U512(c)
-}
-
 fn overflowing_sub_u256(a: U256, b: U256) -> (U256, bool) {
     let alo = ((a.0[1] as u128) << 64) | (a.0[0] as u128);
     let blo = ((b.0[1] as u128) << 64) | (b.0[0] as u128);
@@ -1481,7 +1496,7 @@ pub unsafe fn addmod_u256(a: U256, b: U256, c: U256) -> U256 {
 }
 
 pub unsafe fn mulmod_u256(a: U256, b: U256, c: U256) -> U256 {
-    let p = fullmul_u256(a, b);
+    let p = a.fullmul(b);
     let u = std::mem::transmute::<_, *const u32>(&p.0[0]);
     let v = std::mem::transmute::<_, *const u32>(&c.0[0]);
     let am = count_u32s(a);
@@ -1503,11 +1518,11 @@ pub fn exp_u256(base: U256, exponent: U256, exponent_bits: usize) -> U256 {
     loop {
         let bit_on = exponent.0[i / 64] & (1 << (i % 64));
         if bit_on > 0 {
-            result = mul_u256(result, acc);
+            result = result * acc;
         }
         i += 1;
         if i < exponent_bits {
-            acc = mul_u256(acc, acc);
+            acc *= acc;
             continue;
         }
         break;

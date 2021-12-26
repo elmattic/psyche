@@ -700,7 +700,7 @@ pub unsafe fn run_evm(
                 comment!("opMUL");
                 let a = stack.pop_u256();
                 let b = stack.pop_u256();
-                let result = mul_u256(a, b);
+                let result = a * b;
                 stack.push(result);
                 //
                 pc += 1;
