@@ -102,65 +102,6 @@ impl __m256iExt for __m256i {
     }
 }
 
-#[cfg(target_feature = "avx2")]
-#[derive(Copy, Clone)]
-#[repr(align(32))]
-pub struct Word(pub __m256i);
-
-#[cfg(all(not(target_feature = "avx2"), target_feature = "ssse3"))]
-#[derive(Copy, Clone)]
-#[repr(align(32))]
-pub struct Word(pub (__m128i, __m128i));
-
-#[cfg(not(target_feature = "ssse3"))]
-#[derive(Copy, Clone)]
-#[repr(align(32))]
-pub struct Word(pub U256);
-
-impl Word {
-    pub unsafe fn as_u256(&self) -> U256 {
-        std::mem::transmute::<Word, U256>(*self)
-    }
-
-    pub unsafe fn from_slice(value: &[u64]) -> Word {
-        #[cfg(target_feature = "avx2")]
-        {
-            return Word(_mm256_set_epi64x(
-                value[3] as i64,
-                value[2] as i64,
-                value[1] as i64,
-                value[0] as i64,
-            ));
-        }
-        #[cfg(all(not(target_feature = "avx2"), target_feature = "ssse3"))]
-        {
-            return Word((
-                _mm_set_epi64x(value[1] as i64, value[0] as i64),
-                _mm_set_epi64x(value[3] as i64, value[2] as i64),
-            ));
-        }
-        #[cfg(not(target_feature = "ssse3"))]
-        {
-            Word(U256::from_slice(value))
-        }
-    }
-
-    pub unsafe fn from_u64(value: u64) -> Word {
-        #[cfg(target_feature = "avx2")]
-        {
-            return Word(_mm256_set_epi64x(0, 0, 0, value as i64));
-        }
-        #[cfg(all(not(target_feature = "avx2"), target_feature = "ssse3"))]
-        {
-            return Word((_mm_set_epi64x(0, value as i64), _mm_setzero_si128()));
-        }
-        #[cfg(not(target_feature = "ssse3"))]
-        {
-            Word(U256::from_u64(value))
-        }
-    }
-}
-
 #[allow(unreachable_code)]
 pub unsafe fn load_u256(src: *const U256, offset: isize) -> U256 {
     #[cfg(target_feature = "avx2")]
