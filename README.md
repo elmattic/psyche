@@ -12,6 +12,7 @@
    worst-case).
 - [ ] First class support for ```wasm32-unknown-unknown``` and [simd128](https://doc.rust-lang.org/stable/core/arch/wasm32/index.html#simd).
 - [ ] Optional gas metering
+- [ ] EVMC support
 
 ## Build
 
