@@ -369,6 +369,18 @@ impl EvmOpcode {
         *self >= EvmOpcode::PUSH1 && *self <= EvmOpcode::PUSH32
     }
 
+    /// Returns true if given opcode is `SWAPN` opcode
+    /// SWAP1 -> true
+    pub fn is_swap(&self) -> bool {
+        *self >= EvmOpcode::SWAP1 && *self <= EvmOpcode::SWAP16
+    }
+
+    /// Returns true if given opcode is `DUPN` opcode
+    /// DUP1 -> true
+    pub fn is_dup(&self) -> bool {
+        *self >= EvmOpcode::DUP1 && *self <= EvmOpcode::DUP16
+    }
+
     /// Returns true if given opcode is a basic block (BB) terminator
     /// JUMP -> true
     pub fn is_terminator(&self) -> bool {
@@ -388,6 +400,24 @@ impl EvmOpcode {
     /// PUSH1 -> 0
     pub fn push_index(&self) -> usize {
         ((*self as u8) - (EvmOpcode::PUSH1 as u8)) as usize
+    }
+
+    /// Returns the index of the `DUPN` opcode
+    /// DUP1 -> 0
+    pub fn dup_index(&self) -> usize {
+        ((*self as u8) - (EvmOpcode::DUP1 as u8)) as usize
+    }
+
+    /// Returns the index of the `SWAPN` opcode
+    /// SWAP1 -> 0
+    pub fn swap_index(&self) -> usize {
+        ((*self as u8) - (EvmOpcode::SWAP1 as u8)) as usize
+    }
+
+    /// Returns opcode delta and alpha
+    pub fn delta_alpha(&self) -> (usize, usize) {
+        let (_, _, delta, alpha) = crate::vm::OPCODE_INFOS[*self as usize];
+        (delta as usize, alpha as usize)
     }
 
     /// Convert to internal representation

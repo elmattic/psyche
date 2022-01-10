@@ -17,11 +17,12 @@
 use std::convert::TryFrom;
 use std::mem::MaybeUninit;
 
+use crate::opt::build_super_instructions;
 use crate::instructions::{EvmOpcode, Opcode};
 use crate::schedule::{Fee, Fork, Schedule};
 use crate::u256::*;
 
-const OPCODE_INFOS: [(Fork, Fee, u16, u16); 256] = [
+pub const OPCODE_INFOS: [(Fork, Fee, u16, u16); 256] = [
     (Fork::Frontier, Fee::Zero, 0, 0),    /* STOP = 0x00 */
     (Fork::Frontier, Fee::VeryLow, 2, 1), /* ADD = 0x01 */
     (Fork::Frontier, Fee::Low, 2, 1),     /* MUL = 0x02 */
@@ -1266,14 +1267,29 @@ pub unsafe fn run_evm(
     return ReturnData::new(0, 0, gas, error);
 }
 
-#[derive(Debug)]
-struct BbInfo {
-    stack_min_size: u16,
-    stack_rel_max_size: u16,
-    gas: u64,
+#[derive(Debug, Copy, Clone)]
+pub struct BbInfo {
+    pub stack_min_size: u16,
+    pub stack_rel_max_size: u16,
+    pub start_addr: (u16, u16),
+    pub gas: u64,
 }
 impl BbInfo {
-    fn new(stack_min_size: u16, stack_max_size: u16, gas: u64) -> BbInfo {
+    pub fn default() -> BbInfo {
+        BbInfo {
+            stack_min_size: 0,
+            stack_rel_max_size: 0,
+            start_addr: (0, 0),
+            gas: 0,
+        }
+    }
+
+    fn new(
+        stack_min_size: u16,
+        stack_max_size: u16,
+        gas: u64,
+        start_addr: u16,
+    ) -> BbInfo {
         let stack_rel_max_size = if stack_max_size > stack_min_size {
             stack_max_size - stack_min_size
         } else {
@@ -1281,7 +1297,8 @@ impl BbInfo {
         };
         BbInfo {
             stack_min_size,
-            stack_rel_max_size: stack_rel_max_size,
+            stack_rel_max_size,
+            start_addr: (start_addr, 0),
             gas,
         }
     }
@@ -1296,10 +1313,24 @@ impl VmRom {
     /// to the next power of two.
     const MAX_CODESIZE: usize = 32768;
     const INVALID_DESTS_SIZE: usize = Self::MAX_CODESIZE / 8;
+    // TODO: rename in SPARSE_BLOCK_INFOS_*
     const BB_INFOS_SIZE: usize = Self::MAX_CODESIZE * std::mem::size_of::<BbInfo>();
-    const SIZE: usize = Self::MAX_CODESIZE + Self::INVALID_DESTS_SIZE + Self::BB_INFOS_SIZE;
-    const INVALID_DESTS_OFFSET: usize = Self::MAX_CODESIZE;
-    const BB_INFOS_OFFSET: usize = Self::MAX_CODESIZE + Self::INVALID_DESTS_SIZE;
+    const BLOCK_INFOS_LEN_SIZE: usize = 4;
+    const BLOCK_INFOS_SIZE: usize = Self::MAX_CODESIZE * std::mem::size_of::<BbInfo>();
+    const SIZE: usize =
+        Self::MAX_CODESIZE
+        + Self::INVALID_DESTS_SIZE
+        + Self::BB_INFOS_SIZE
+        + Self::BLOCK_INFOS_LEN_SIZE
+        + Self::BLOCK_INFOS_SIZE;
+    const INVALID_DESTS_OFFSET: usize =
+        Self::MAX_CODESIZE;
+    const BB_INFOS_OFFSET: usize =
+        Self::MAX_CODESIZE + Self::INVALID_DESTS_SIZE;
+    const BLOCK_INFOS_LEN_OFFSET: usize =
+        Self::MAX_CODESIZE + Self::INVALID_DESTS_SIZE + Self::BB_INFOS_SIZE;
+    const BLOCK_INFOS_OFFSET: usize =
+        Self::MAX_CODESIZE + Self::INVALID_DESTS_SIZE + Self::BB_INFOS_SIZE + Self::BLOCK_INFOS_LEN_SIZE;
 
     pub fn new() -> VmRom {
         VmRom {
@@ -1309,6 +1340,14 @@ impl VmRom {
 
     fn code(&self) -> *const u8 {
         self.data.as_ptr()
+    }
+
+    pub fn block_infos_len(&self) -> u32 {
+        unsafe {
+            let ptr = self.data.as_ptr().offset(Self::BLOCK_INFOS_LEN_OFFSET as isize);
+            let ptr = std::mem::transmute::<*const u8, *const u32>(ptr);
+            *ptr
+        }
     }
 
     fn is_valid_dest(&self, addr: isize) -> bool {
@@ -1336,7 +1375,7 @@ impl VmRom {
         (opcode == Opcode::BEGINSUB) & self.is_valid_dest(addr)
     }
 
-    fn get_bb_info(&self, addr: u64) -> &BbInfo {
+    pub fn get_bb_info(&self, addr: u64) -> &BbInfo {
         unsafe {
             let offset = VmRom::BB_INFOS_OFFSET as isize;
             let bb_infos = self.data.as_ptr().offset(offset) as *mut BbInfo;
@@ -1344,7 +1383,15 @@ impl VmRom {
         }
     }
 
-    fn swap_bytes(input: &[u8], swapped: &mut [u8]) {
+    pub fn get_block_info(&self, idx: u32) -> &BbInfo {
+        unsafe {
+            let offset = VmRom::BLOCK_INFOS_OFFSET as isize;
+            let block_infos_ptr = self.data.as_ptr().offset(offset) as *mut BbInfo;
+            &*block_infos_ptr.offset(idx as isize)
+        }
+    }
+
+    pub fn swap_bytes(input: &[u8], swapped: &mut [u8]) {
         for i in 0..input.len() {
             swapped[input.len() - 1 - i] = input[i];
         }
@@ -1464,6 +1511,11 @@ impl VmRom {
             let offset = VmRom::BB_INFOS_OFFSET as isize;
             self.data.as_ptr().offset(offset) as *mut BbInfo
         };
+        let block_infos_ptr = unsafe {
+            let offset = VmRom::BLOCK_INFOS_OFFSET as isize;
+            self.data.as_ptr().offset(offset) as *mut BbInfo
+        };
+        let mut idx = block_infos.len() as isize -1;
         for info in block_infos.iter().rev() {
             if info.is_basic_block {
                 stack_min_size = info.stack_min_size;
@@ -1484,9 +1536,21 @@ impl VmRom {
                 gas += info.gas;
             }
             unsafe {
-                let bb_info = BbInfo::new(stack_min_size, stack_max_size, gas);
+                let start_addr = info.addr as u16;
+                let bb_info =
+                    BbInfo::new(stack_min_size, stack_max_size, gas, start_addr);
                 *bb_infos.offset(info.addr as isize) = bb_info;
+
+                // write compact block infos
+                *block_infos_ptr.offset(idx) = bb_info;
+                idx -= 1;
             }
+        }
+        // write number of blocks previously written
+        unsafe {
+            let ptr = self.data.as_mut_ptr().offset(Self::BLOCK_INFOS_LEN_OFFSET as isize);
+            let ptr = std::mem::transmute::<*mut u8, *mut u32>(ptr);
+            *ptr = block_infos.len() as u32;
         }
     }
 

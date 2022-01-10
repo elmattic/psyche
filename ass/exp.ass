@@ -34,8 +34,8 @@ loop:
     2
     EXP
 
-    POP
-    POP
+    ADD
+    ADD
     POP
 
     DUP3       ; loop
