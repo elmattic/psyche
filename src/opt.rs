@@ -166,7 +166,6 @@ impl StaticStack {
         self.args.len()
     }
 
-
     fn size(&self) -> usize {
         self.size
     }
@@ -186,7 +185,6 @@ impl StaticStack {
             self.next_id += 1;
         }
     }
-
 
     fn push(&mut self, arg: Argument, pc: isize) -> &mut Self {
         let id = match arg {
@@ -210,252 +208,290 @@ impl StaticStack {
         self
     }
 
-    fn pop(&mut self, pc: isize) -> Result<(&mut Self, Argument), &str> {
+    fn pop(&mut self, pc: isize) -> (&mut Self, Argument) {
         //println!("len: {}", self.args.len());
-        if let Some(arg) = self.args.pop() {
-            let id = match arg {
-                Argument::Input { id, address: _ } => Some(id),
-                Argument::Temporary { id } => Some(id),
-                Argument::Constant { offset: _ } => None,
+        // TODO: explain why it's safe to unwrap
+        let arg = self.args.pop().unwrap();
+        let id = match arg {
+            Argument::Input { id, address: _ } => Some(id),
+            Argument::Temporary { id } => Some(id),
+            Argument::Constant { offset: _ } => None,
+        };
+        if let Some(id) = id {
+            let v = self.rcs.get_mut(&id).unwrap();
+            // decrement the refcount
+            let rc = *v - 1;
+            //println!("popping {} (rc={})", id, rc);
+            if rc == 0 {
+                // the register is not in use anymore, remove rc and mark
+                // lifetime end
+                self.rcs.remove(&id);
+                let (_, end) = self.lifetimes.get_mut(&id).unwrap();
+                *end = Some(pc as isize);
+            } else {
+                *v = rc;
             };
-            if let Some(id) = id {
-                let v = self.rcs.get_mut(&id).unwrap();
-                // decrement the refcount
-                let rc = *v - 1;
-                //println!("popping {} (rc={})", id, rc);
-                if rc == 0 {
-                    // the register is not in use anymore, remove rc and mark
-                    // lifetime end
-                    self.rcs.remove(&id);
-                    let (_, end) = self.lifetimes.get_mut(&id).unwrap();
-                    *end = Some(pc as isize);
-                } else {
-                    *v = rc;
-                };
-            }
-            return Ok((self, arg));
         }
-        Err("stack underflow")
+        (self, arg)
     }
 
-    fn swap(&mut self, index: usize) -> Result<(&mut Self, ()), &str> {
+    fn swap(&mut self, index: usize) -> &mut Self {
         let n = self.args.len() - 1 - 1 - index;
         //println!("n: {}", n);
-        if let Some(temp) = self.args.get(n) {
-            let temp = temp.clone();
-            let top = self.args.len() - 1;
-            //println!("top: {}", top);
-            self.args[n] = self.args[top];
-            self.args[top] = temp;
-            return Ok((self, ()));
-        }
-        Err("stack underflow")
+        // TODO: explain why it's safe to unwrap
+        let temp = self.args.get(n).unwrap();
+        let temp = temp.clone();
+        let top = self.args.len() - 1;
+        //println!("top: {}", top);
+        self.args[n] = self.args[top];
+        self.args[top] = temp;
+        self
     }
 
-    fn dup(&mut self, index: usize) -> Result<(&mut Self, ()), &str> {
+    fn dup(&mut self, index: usize) -> &mut Self {
         let n = self.args.len() - 1 - index;
-        if let Some(arg) = self.args.get(n) {
-            let id = match arg {
-                Argument::Input { id, address: _ } => Some(id),
-                Argument::Temporary { id } => Some(id),
-                Argument::Constant { offset: _ } => None,
-            };
-            if let Some(id) = id {
-                let v = self.rcs.get_mut(id).unwrap();
-                *v = *v + 1;
-            }
-            let arg = arg.clone();
-            self.args.push(arg);
-            return Ok((self, ()));
+        // TODO: explain why it's safe to unwrap
+        let arg = self.args.get(n).unwrap();
+        let id = match arg {
+            Argument::Input { id, address: _ } => Some(id),
+            Argument::Temporary { id } => Some(id),
+            Argument::Constant { offset: _ } => None,
+        };
+        if let Some(id) = id {
+            let v = self.rcs.get_mut(id).unwrap();
+            *v = *v + 1;
         }
-        Err("stack underflow")
+        let arg = arg.clone();
+        self.args.push(arg);
+        self
     }
 
-    // Allocate a new register.
-    fn alloc_register(&mut self) -> (&mut Self, Argument) {
+    // Allocate a new temporary.
+    fn alloc_temporary(&mut self) -> (&mut Self, Argument) {
         let arg = Argument::Temporary { id: self.next_id };
         self.next_id += 1;
         (self, arg)
     }
-}
 
-fn build_instruction(
-    opcode: EvmOpcode,
-    stack: &mut StaticStack,
-    pc: isize,
-) -> Result<Instr, &str> {
-    let (delta, alpha) = opcode.delta_alpha();
-    assert!(alpha == 0 || alpha == 1);
-    // pop delta arguments off the stack
-    let mut args = [ Argument::Constant { offset: 0 }; 7];
-    let stack = (0..delta).fold(Ok(stack), |res, i| {
-        if let Ok(stack) = res {
-            let (stack, arg) = stack.pop(pc)?;
-            args[i] = arg;
-            Ok(stack)
+    fn eval_opcode(
+        &mut self,
+        opcode: EvmOpcode,
+        pc: isize,
+    ) -> Result<Instr, &str> {
+        let (delta, alpha) = opcode.delta_alpha();
+        assert!(alpha == 0 || alpha == 1);
+        // pop delta arguments off the stack
+        let mut args = [ Argument::Constant { offset: 0 }; 7];
+        let stack = (0..delta).fold(Ok(self), |res, i| {
+            if let Ok(stack) = res {
+                let (stack, arg) = stack.pop(pc);
+                args[i] = arg;
+                Ok(stack)
+            } else {
+                res
+            }
+        })?;
+        // alloc temporary and push it to the stack if alpha == 1
+        let (stack, reg) = if alpha > 0 {
+            let (stack, reg) = stack.alloc_temporary();
+            let stack = stack.push(reg, pc as isize);
+            (stack, Some(reg))
         } else {
-            res
-        }
-    })?;
-    // alloc register and push it to the stack if alpha == 1
-    let (stack, reg) = if alpha > 0 {
-        let (stack, reg) = stack.alloc_register();
-        let stack = stack.push(reg, pc as isize);
-        (stack, Some(reg))
-    } else {
-        (stack, None)
-    };
-    Ok(Instr::new(opcode, reg, &args[0..delta]))
-}
-
-fn alloc_stack_slots(
-    stack: &StaticStack,
-    instrs: &mut [Instr],
-    consts: &[U256],
-    instr_len: usize,
-    block_info: &BbInfo,
-) {
-    // for arg in stack.args.iter() {
-    //     println!(">> {:?}", arg);
-    // }
-    for instr in instrs.iter() {
-        println!("{}", Instr::with_consts(instr, &consts));
-    }
-
-    let diff = stack.len() as isize - stack.size() as isize;
-    println!("diff: {}", diff);
-
-    let mut constraints: HashMap<u16, i16> = HashMap::new();
-
-    let mut ref_address = diff - 1;
-    for arg in stack.args.iter().rev() {
-        //println!("{:?}", arg);
-        match arg {
-            Argument::Constant { offset } => {
-                let v = consts[*offset as usize];
-                println!("need to set @{} with constant {}", ref_address, v.0[0]);
-            },
-            Argument::Input { id, address } => {
-                if ref_address == *address as isize {
-                    println!("input @{} was unmodified", ref_address);
-                } else {
-                    println!("need to set @{} with input r{}(@{})", ref_address, id, address);
-                }
-            },
-            Argument::Temporary { id } => {
-                println!("need to set @{} with temporary r{}", ref_address, id);
-                constraints.insert(*id, ref_address as i16);
-            },
-        }
-        ref_address -= 1;
-    }
-    if stack.args.is_empty() {
-        println!("nothing to do because stack at the end is empty");
-    }
-
-    //print_lifetimes(stack, instr_len);
-
-    let end_pc = instr_len as isize -1;
-    println!("lifetimes:");
-    let mut sorted_lifetimes: Vec<(isize, isize, u16, bool, i16)> = vec!();
-    for (k, v) in &stack.lifetimes {
-        let id = k;
-        let (start, end) = v;
-        let end = end.unwrap_or(end_pc);
-        let is_input = (*id as usize) < stack.size();
-        let addr = if is_input {
-            let size = block_info.stack_min_size as i16;
-            //println!("size {}", size);
-            let addr = (*id as isize - size as isize) as i16;
-            //let address = (i as isize - size as isize) as i16;
-            addr
-        } else {
-            std::i16::MAX as i16
+            (stack, None)
         };
-        sorted_lifetimes.push((*start, end, *id, is_input, addr));
+        Ok(Instr::new(opcode, reg, &args[0..delta]))
     }
-    // sorted by end of life
-    sorted_lifetimes.sort_by_key(|v| v.1);
-    println!("sorted: {:?}", sorted_lifetimes);
 
-    let mut free_slots: Vec<i16> = vec!();
-    for i in 0..block_info.stack_rel_max_size {
-        free_slots.push(i as i16);
-    }
-    let print_log = false;
-    let mut pc: isize = 0;
-    let mut start_idx = 0;
-    while pc < instr_len as isize {
-        if print_log { println!("pc: {}", pc) };
-        if print_log { println!("free slots: {:?}", free_slots) };
-        if print_log { println!("sorted: {:?}", sorted_lifetimes) };
-        //let mut max = 0;
-        for v in &mut sorted_lifetimes[start_idx..] {
-            let (start, end, id, is_input, addr) = *v;
-            if pc == end {
-                if print_log { println!("{}{} has reach end of life, its address @{} is available for writing",
-                    if is_input { "i" } else { "r" }, id, addr) };
-                assert!(!free_slots.contains(&addr), "@{} is present in free slots", addr);
-                free_slots.push(addr);
-            }
-            if pc == start {
-                if print_log { println!("{}{} is now alive and need to be allocated to a stack slot!",
-                    if is_input { "i" } else { "r" }, id) };
-                if !is_input {
-                    let addr = if let Some(addr) = constraints.get(&id) {
-                        if print_log { println!("constraining it to @{}", addr) };
-                        let idx = free_slots.iter().position(|&x| x == *addr).unwrap();
-                        free_slots.remove(idx);
-                        *addr
-                    } else {
-                        // no particular constraint, pick what's free
-                        let addr = free_slots.pop().unwrap();
-                        if print_log { println!("found free @{}", addr) };
-                        addr
-                    };
-                    v.4 = addr;
+    fn eval_block<'a>(
+        &mut self,
+        bytecode: &[u8],
+        consts: &mut Vec<U256>,
+        instrs: &mut Vec<Instr>
+    ) {
+        let mut block_pc = 0;
+        let mut i = 0;
+        while i < bytecode.len() {
+            let opcode = unsafe { std::mem::transmute::<_, EvmOpcode>(bytecode[i]) };
+            // handle stack opcodes first
+            // TODO: use a match expr
+            if opcode.is_push() {
+                let num_bytes = opcode.push_index() + 1;
+                let start = i + 1;
+                let end = start + num_bytes;
+                let mut buffer: [u8; 32] = [0; 32];
+                VmRom::swap_bytes(&bytecode[start..end], &mut buffer);
+                let value = U256::from_slice(unsafe { std::mem::transmute::<_, &[u64; 4]>(&buffer) });
+                let index = consts.len();
+                consts.push(value);
+                self.push(Argument::Constant{ offset: index as u16 }, block_pc);
+                i += num_bytes;
+            } else if opcode.is_dup() {
+                let index = opcode.dup_index();
+                self.dup(index);
+            } else if opcode.is_swap() {
+                let index = opcode.swap_index();
+                self.swap(index);
+            } else if opcode == EvmOpcode::POP {
+                self.pop(block_pc);
+            } else if opcode == EvmOpcode::JUMPDEST {
+                // do nothing
+                ()
+            } else {
+                // handle non-stack opcodes
+                let res = self.eval_opcode(opcode, block_pc);
+                block_pc += 1;
+                if let Ok(instr) = res {
+                    instrs.push(instr);
+                } else {
+                    instrs.push(Instr::invalid());
                 }
             }
+            i += 1;
         }
-        pc += 1;
     }
-    //println!("{:?}", bb);
 
-    // print now final instructions
-    println!("");
-    for (pc, instr) in instrs.iter().enumerate() {
-        let icl = Instr::with_consts_and_lifetimes(instr, &consts, &sorted_lifetimes);
-        println!("{}: {}", pc, icl);
-    }
-}
+    fn print_lifetimes(stack: &StaticStack, instr_len: usize) {
+        let end_pc = instr_len as isize -1;
+        println!("lifetimes: {}", instr_len);
+        let mut sorted_lifetimes: Vec<(isize, isize, u16, bool)> = vec!();
+        for (k, v) in &stack.lifetimes {
+            let id = k;
 
-fn print_lifetimes(stack: &StaticStack, instr_len: usize) {
-    let end_pc = instr_len as isize -1;
-    println!("lifetimes: {}", instr_len);
-    let mut sorted_lifetimes: Vec<(isize, isize, u16, bool)> = vec!();
-    for (k, v) in &stack.lifetimes {
-        let id = k;
-
-        let (start, end) = v;
-        let end = end.unwrap_or(end_pc);
-        let is_input = (*id as usize) < stack.size();
-        if is_input {
-            println!("i{}: {} to {:?}", id, start, end);
-        } else {
-            println!("r{}: {} to {:?}", id, start, end);
+            let (start, end) = v;
+            let end = end.unwrap_or(end_pc);
+            let is_input = (*id as usize) < stack.size();
+            if is_input {
+                println!("i{}: {} to {:?}", id, start, end);
+            } else {
+                println!("r{}: {} to {:?}", id, start, end);
+            }
+            sorted_lifetimes.push((*start, end, *id, is_input));
         }
-        sorted_lifetimes.push((*start, end, *id, is_input));
+        // sorted by end of life
+        sorted_lifetimes.sort_by_key(|v| v.1);
+        println!("sorted: {:?}", sorted_lifetimes);
     }
-    // sorted by end of life
-    sorted_lifetimes.sort_by_key(|v| v.1);
-    println!("sorted: {:?}", sorted_lifetimes);
 
-    // let mut free_locs: Vec<i16> = vec!();
-    // let mut i: isize = -1;
-    // while i < instr_len as isize {
-    //     println!("pc: {}", i);
-    //     i += 1;
-    // }
+    fn alloc_stack_slots(
+        &mut self,
+        instrs: &mut [Instr],
+        consts: &[U256],
+        instr_len: usize,
+        block_info: &BbInfo,
+    ) {
+        // for arg in stack.args.iter() {
+        //     println!(">> {:?}", arg);
+        // }
+        for instr in instrs.iter() {
+            println!("{}", Instr::with_consts(instr, &consts));
+        }
+
+        let diff = self.len() as isize - self.size() as isize;
+        println!("diff: {}", diff);
+
+        let mut constraints: HashMap<u16, i16> = HashMap::new();
+
+        let mut ref_address = diff - 1;
+        for arg in self.args.iter().rev() {
+            //println!("{:?}", arg);
+            match arg {
+                Argument::Constant { offset } => {
+                    let v = consts[*offset as usize];
+                    println!("need to set @{} with constant {}", ref_address, v.0[0]);
+                },
+                Argument::Input { id, address } => {
+                    if ref_address == *address as isize {
+                        println!("input @{} was unmodified", ref_address);
+                    } else {
+                        println!("need to set @{} with input r{}(@{})", ref_address, id, address);
+                    }
+                },
+                Argument::Temporary { id } => {
+                    println!("need to set @{} with temporary r{}", ref_address, id);
+                    constraints.insert(*id, ref_address as i16);
+                },
+            }
+            ref_address -= 1;
+        }
+        if self.args.is_empty() {
+            println!("nothing to do because stack at the end is empty");
+        }
+
+        //Self::print_lifetimes(self, instr_len);
+
+        let end_pc = instr_len as isize -1;
+        println!("lifetimes:");
+        let mut sorted_lifetimes: Vec<(isize, isize, u16, bool, i16)> = vec!();
+        for (k, v) in &self.lifetimes {
+            let id = k;
+            let (start, end) = v;
+            let end = end.unwrap_or(end_pc);
+            let is_input = (*id as usize) < self.size();
+            let addr = if is_input {
+                let size = block_info.stack_min_size as i16;
+                //println!("size {}", size);
+                let addr = (*id as isize - size as isize) as i16;
+                //let address = (i as isize - size as isize) as i16;
+                addr
+            } else {
+                std::i16::MAX as i16
+            };
+            sorted_lifetimes.push((*start, end, *id, is_input, addr));
+        }
+        // sorted by end of life
+        sorted_lifetimes.sort_by_key(|v| v.1);
+        println!("sorted: {:?}", sorted_lifetimes);
+
+        let mut free_slots: Vec<i16> = vec!();
+        for i in 0..block_info.stack_rel_max_size {
+            free_slots.push(i as i16);
+        }
+        let print_log = false;
+        let mut pc: isize = 0;
+        let mut start_idx = 0;
+        while pc < instr_len as isize {
+            if print_log { println!("pc: {}", pc) };
+            if print_log { println!("free slots: {:?}", free_slots) };
+            if print_log { println!("sorted: {:?}", sorted_lifetimes) };
+            //let mut max = 0;
+            for v in &mut sorted_lifetimes[start_idx..] {
+                let (start, end, id, is_input, addr) = *v;
+                if pc == end {
+                    if print_log { println!("{}{} has reach end of life, its address @{} is available for writing",
+                        if is_input { "i" } else { "r" }, id, addr) };
+                    assert!(!free_slots.contains(&addr), "@{} is present in free slots", addr);
+                    free_slots.push(addr);
+                }
+                if pc == start {
+                    if print_log { println!("{}{} is now alive and need to be allocated to a stack slot!",
+                        if is_input { "i" } else { "r" }, id) };
+                    if !is_input {
+                        let addr = if let Some(addr) = constraints.get(&id) {
+                            if print_log { println!("constraining it to @{}", addr) };
+                            let idx = free_slots.iter().position(|&x| x == *addr).unwrap();
+                            free_slots.remove(idx);
+                            *addr
+                        } else {
+                            // no particular constraint, pick what's free
+                            let addr = free_slots.pop().unwrap();
+                            if print_log { println!("found free @{}", addr) };
+                            addr
+                        };
+                        v.4 = addr;
+                    }
+                }
+            }
+            pc += 1;
+        }
+        //println!("{:?}", bb);
+
+        // print now final instructions
+        println!("");
+        for (pc, instr) in instrs.iter().enumerate() {
+            let icl = Instr::with_consts_and_lifetimes(instr, &consts, &sorted_lifetimes);
+            println!("{}: {}", pc, icl);
+        }
+    }
 }
 
 pub fn build_super_instructions(bytecode: &[u8], schedule: &Schedule) {
@@ -498,51 +534,17 @@ pub fn build_super_instructions(bytecode: &[u8], schedule: &Schedule) {
 
         // build super instructions
         stack.clear(block_info.stack_min_size as usize);
+        let block = &bytecode[block_offset as usize..(block_offset + block_bytes_len) as usize];
+        stack.eval_block(block, &mut consts, &mut instrs);
 
-        //let block = &bytecode[(block_offset + offset) as usize..(block_offset + offset + block_bytes_len) as usize];
-        //eval_block(code, &mut stack, &mut consts, &mut instrs);
-        let mut offset: isize = 0;
-        let mut block_pc = 0;
-        while offset < block_bytes_len {
-            let opcode = unsafe { *opcodes.offset(block_offset + offset) };
-            if opcode.is_push() {
-                let num_bytes = opcode.push_index() as isize + 1;
-                let start = (block_offset + offset) as usize + 1;
-                let end = start + num_bytes as usize;
-                let mut buffer: [u8; 32] = [0; 32];
-                VmRom::swap_bytes(&bytecode[start..end], &mut buffer);
-                let value = U256::from_slice(unsafe { std::mem::transmute::<_, &[u64; 4]>(&buffer) });
-                let index = consts.len();
-                consts.push(value);
-                stack.push(Argument::Constant{ offset: index as u16 }, block_pc);
-                offset += num_bytes;
-            } else if opcode.is_dup() {
-                let index = opcode.dup_index();
-                stack.dup(index);
-            } else if opcode.is_swap() {
-                let index = opcode.swap_index();
-                stack.swap(index);
-            } else if opcode == EvmOpcode::POP {
-                stack.pop(block_pc);
-            } else if opcode == EvmOpcode::JUMPDEST {
-                // do nothing
-                ()
-            } else {
-                // handle non-stack opcode
-                let res = build_instruction(opcode, &mut stack, block_pc);
-                block_pc += 1;
-                if let Ok(instr) = res {
-                    instrs.push(instr);
-                } else {
-                    instrs.push(Instr::invalid());
-                }
-            }
-            offset += 1;
-        }
         let block_instr_len = instrs.len() - start_instr;
-        alloc_stack_slots(&stack, &mut instrs[start_instr..], &consts, block_instr_len, &block_info);
+        stack.alloc_stack_slots(&mut instrs[start_instr..], &consts, block_instr_len, &block_info);
         start_instr = instrs.len();
 
         block_offset += block_bytes_len;
     }
+
+    // patch jump addresses
+
+    // compress constants (optional)
 }
