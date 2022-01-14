@@ -29,6 +29,7 @@ type Lifetime = (isize, isize, u16, bool, i16);
 struct Instr {
     opcode: EvmOpcode,
     args: Vec<Argument>,
+    sp_offset: i16,
 }
 
 struct InstrWithConsts<'a> {
@@ -62,6 +63,7 @@ impl Instr {
        Instr {
             opcode: EvmOpcode::INVALID,
             args: vec!(),
+            sp_offset: 0,
         }
     }
 
@@ -80,6 +82,7 @@ impl Instr {
         Instr {
             opcode,
             args: v,
+            sp_offset: 0,
         }
     }
 
@@ -92,6 +95,7 @@ impl Instr {
         Instr {
             opcode: EvmOpcode::SWAP1,
             args: v,
+            sp_offset: 0,
         }
     }
 }
@@ -120,6 +124,10 @@ impl<'a> fmt::Display for InstrWithConsts<'a> {
                 },
             }
         }
+        let sp_offset = self.instr.sp_offset;
+        if sp_offset != 0 {
+            write!(f, "({:+})", sp_offset);
+        }
         res
     }
 }
@@ -144,6 +152,10 @@ impl<'a> fmt::Display for InstrWithConstsAndLifetimes<'a> {
                     write!(f, "@{}, ", addr);
                 },
             }
+        }
+        let sp_offset = self.instr.sp_offset;
+        if sp_offset != 0 {
+            write!(f, "({:+})", sp_offset);
         }
         res
     }
@@ -548,6 +560,16 @@ impl StaticStack {
                 },
                 (None, None) => break,
                 (None, Some(_)) => unreachable!(),
+            }
+        }
+
+        if diff != 0 {
+            // we need to store in last instruction of the block the stack ptr
+            // offset
+            if let Some(instr) = instrs.last_mut() {
+                // check if last instruction has enough bits left, otherwise we
+                // need to push a noop jump instruction for that matter
+                instr.sp_offset = diff as i16;
             }
         }
     }
