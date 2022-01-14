@@ -455,7 +455,6 @@ impl StaticStack {
             sorted_lifetimes.push((*start, end, *id, is_input, addr));
         }
         // sort by end of life, in case of a tie use start of life
-        sorted_lifetimes.sort_by_key(|v| v.1);
         {
             use std::cmp::Ordering;
             sorted_lifetimes.sort_by(|a, b| {
