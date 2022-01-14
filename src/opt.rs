@@ -454,8 +454,17 @@ impl StaticStack {
             };
             sorted_lifetimes.push((*start, end, *id, is_input, addr));
         }
-        // sorted by end of life
+        // sort by end of life, in case of a tie use start of life
         sorted_lifetimes.sort_by_key(|v| v.1);
+        {
+            use std::cmp::Ordering;
+            sorted_lifetimes.sort_by(|a, b| {
+                match a.1.cmp(&b.1) {
+                    Ordering::Equal => a.0.cmp(&b.0),
+                    other => other,
+                }
+            });
+        }
         println!("sorted: {:?}", sorted_lifetimes);
 
         let mut free_slots: Vec<i16> = vec!();
