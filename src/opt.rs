@@ -108,7 +108,7 @@ impl<'a> fmt::Display for InstrWithConsts<'a> {
         } else {
             s
         };
-        let res = write!(f, "{} ", s);
+        let res = write!(f, "{:<7} ", s);
 
         for arg in self.instr.args.iter() {
             match arg {
@@ -117,7 +117,7 @@ impl<'a> fmt::Display for InstrWithConsts<'a> {
                     write!(f, "${}, ", v.0[0]);
                 },
                 Argument::Input { id: _, address } => {
-                    write!(f, "@{}, ", address);
+                    write!(f, "@{:+}, ", address);
                 },
                 Argument::Temporary { id } => {
                     write!(f, "r{}, ", id);
