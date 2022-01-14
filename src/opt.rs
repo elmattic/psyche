@@ -29,7 +29,6 @@ type Lifetime = (isize, isize, u16, bool, i16);
 struct Instr {
     opcode: EvmOpcode,
     args: Vec<Argument>,
-    ret: bool,
 }
 
 struct InstrWithConsts<'a> {
@@ -63,7 +62,6 @@ impl Instr {
        Instr {
             opcode: EvmOpcode::INVALID,
             args: vec!(),
-            ret: false,
         }
     }
 
@@ -82,7 +80,18 @@ impl Instr {
         Instr {
             opcode,
             args: v,
-            ret: retarg.is_some(),
+        }
+    }
+
+    fn set2(dst0: Argument, dst1: Argument, src0: Argument, src1: Argument) -> Instr {
+        let mut v = vec![];
+        v.push(dst0);
+        v.push(dst1);
+        v.push(src0);
+        v.push(src1);
+        Instr {
+            opcode: EvmOpcode::SWAP1,
+            args: v,
         }
     }
 }
@@ -90,6 +99,11 @@ impl Instr {
 impl<'a> fmt::Display for InstrWithConsts<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let s = self.instr.opcode.to_string().to_lowercase();
+        let s = if s == "swap1" {
+            "set2".to_string()
+        } else {
+            s
+        };
         let res = write!(f, "{} ", s);
 
         for arg in self.instr.args.iter() {
@@ -395,21 +409,11 @@ impl StaticStack {
         for arg in self.args.iter().rev() {
             //println!("{:?}", arg);
             match arg {
-                Argument::Constant { offset } => {
-                    let v = consts[*offset as usize];
-                    println!("need to set @{} with constant {}", ref_address, v.0[0]);
-                },
-                Argument::Input { id, address } => {
-                    if ref_address == *address as isize {
-                        println!("input @{} was unmodified", ref_address);
-                    } else {
-                        println!("need to set @{} with input r{}(@{})", ref_address, id, address);
-                    }
-                },
                 Argument::Temporary { id } => {
-                    println!("need to set @{} with temporary r{}", ref_address, id);
+                    println!("need to allocate @{} to temporary r{}", ref_address, id);
                     constraints.insert(*id, ref_address as i16);
                 },
+                _ => (),
             }
             ref_address -= 1;
         }
@@ -485,11 +489,66 @@ impl StaticStack {
         }
         //println!("{:?}", bb);
 
-        // print now final instructions
-        println!("");
-        for (pc, instr) in instrs.iter().enumerate() {
-            let icl = Instr::with_consts_and_lifetimes(instr, &consts, &sorted_lifetimes);
-            println!("{}: {}", pc, icl);
+        // patch instruction temporaries with their allocated stack slots
+        for instr in instrs {
+            for arg in &mut instr.args {
+                match arg {
+                    Argument::Temporary { id } => {
+                        let res = sorted_lifetimes.iter().find(|&tu| tu.2 == *id);
+                        let (_,_,_,_,addr) = res.unwrap();
+                        *arg = Argument::Input {
+                            id: u16::MAX,
+                            address: *addr
+                        };
+                    },
+                    _ => (),
+                }
+            }
+        }
+    }
+
+    fn block_fixup(&mut self, instrs: &mut Vec<Instr>) {
+        let diff = self.len() as isize - self.size() as isize;
+        let mut sets = self.args
+            .iter()
+            .rev()
+            .enumerate()
+            .filter_map(|(i, arg)| {
+                let ref_address = diff - 1 - i as isize;
+                match arg {
+                    Argument::Constant { offset } => {
+                        Some((Argument::Input { id: u16::MAX, address: ref_address as i16 },
+                            Argument::Constant { offset: *offset }
+                        ))
+                    },
+                    Argument::Input { id, address } => {
+                        if ref_address == *address as isize {
+                            // input was unmodified, do nothing
+                            None
+                        } else  {
+                            Some((Argument::Input { id: u16::MAX, address: ref_address as i16 },
+                                Argument::Input { id: *id, address: *address }
+                            ))
+                        }
+                    },
+                    _ => None,
+                }
+            });
+
+        loop {
+            let s0 = sets.next();
+            let s1 = sets.next();
+            match (s0, s1) {
+                (Some((dst0, src0)), Some((dst1, src1))) => {
+                    instrs.push(Instr::set2(dst0, dst1, src0, src1));
+                },
+                (Some((dst, src)), None) => {
+                    instrs.push(Instr::set2(dst, dst, src, src));
+                    break;
+                },
+                (None, None) => break,
+                (None, Some(_)) => unreachable!(),
+            }
         }
     }
 }
@@ -539,6 +598,7 @@ pub fn build_super_instructions(bytecode: &[u8], schedule: &Schedule) {
 
         let block_instr_len = instrs.len() - start_instr;
         stack.alloc_stack_slots(&mut instrs[start_instr..], &consts, block_instr_len, &block_info);
+        stack.block_fixup(&mut instrs);
         start_instr = instrs.len();
 
         block_offset += block_bytes_len;
@@ -547,4 +607,10 @@ pub fn build_super_instructions(bytecode: &[u8], schedule: &Schedule) {
     // patch jump addresses
 
     // compress constants (optional)
+
+    println!("");
+    for instr in instrs.iter() {
+        let ic = Instr::with_consts(instr, &consts);
+        println!("{}", ic);
+    }
 }
