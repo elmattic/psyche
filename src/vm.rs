@@ -1311,7 +1311,7 @@ pub struct VmRom {
 impl VmRom {
     /// EIP-170 states a max contract code size of 2**14 + 2**13, we round it
     /// to the next power of two.
-    const MAX_CODESIZE: usize = 32768;
+    pub const MAX_CODESIZE: usize = 32768;
     const INVALID_DESTS_SIZE: usize = Self::MAX_CODESIZE / 8;
     // TODO: rename in SPARSE_BLOCK_INFOS_*
     const BB_INFOS_SIZE: usize = Self::MAX_CODESIZE * std::mem::size_of::<BbInfo>();
@@ -1361,7 +1361,7 @@ impl VmRom {
         (mask & bit) == 0
     }
 
-    fn is_jumpdest(&self, addr: u64) -> bool {
+    pub fn is_jumpdest(&self, addr: u64) -> bool {
         let addr = (addr as isize) % (Self::MAX_CODESIZE as isize);
         let code = unsafe { *self.code().offset(addr) };
         let opcode = unsafe { std::mem::transmute::<u8, Opcode>(code) };

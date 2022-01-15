@@ -18,6 +18,7 @@ use crate::instructions::EvmOpcode;
 use crate::schedule::Schedule;
 use crate::vm::VmRom;
 use crate::vm::BbInfo;
+use crate::u256;
 use crate::u256::U256;
 
 use std::collections::{HashMap};
@@ -26,21 +27,23 @@ use std::fmt;
 type Lifetime = (isize, isize, u16, bool, i16);
 
 #[derive(Debug)]
+enum Operand {
+    Address { offset: i16 },
+    JumpDest { addr: u16 },
+    Immediate { index: u16 },
+    Temporary { id: u16 }
+}
+
+#[derive(Debug)]
 struct Instr {
     opcode: EvmOpcode,
-    args: Vec<Argument>,
+    operands: Vec<Operand>,
     sp_offset: i16,
 }
 
 struct InstrWithConsts<'a> {
     instr: &'a Instr,
     consts: &'a [U256],
-}
-
-struct InstrWithConstsAndLifetimes<'a> {
-    instr: &'a Instr,
-    consts: &'a [U256],
-    lifetimes: &'a [Lifetime],
 }
 
 impl Instr {
@@ -51,18 +54,10 @@ impl Instr {
         }
     }
 
-    fn with_consts_and_lifetimes<'a>(instr: &'a Instr, consts: &'a [U256], lifetimes: &'a [Lifetime]) -> InstrWithConstsAndLifetimes<'a> {
-        InstrWithConstsAndLifetimes {
-            instr,
-            consts,
-            lifetimes,
-        }
-    }
-
     fn invalid() -> Instr {
        Instr {
             opcode: EvmOpcode::INVALID,
-            args: vec!(),
+            operands: vec!(),
             sp_offset: 0,
         }
     }
@@ -71,30 +66,77 @@ impl Instr {
         opcode: EvmOpcode,
         retarg: Option<Argument>,
         args: &[Argument],
+        rom: &VmRom,
+        imms: &mut Vec<U256>,
     ) -> Instr {
+        match opcode {
+            EvmOpcode::JUMP => {
+                if let Argument::Immediate { value } = args[0] {
+                    let in_bounds = unsafe {
+                        u256::is_ltpow2_u256(value, VmRom::MAX_CODESIZE)
+                    };
+                    let low = value.low_u64();
+                    if in_bounds & rom.is_jumpdest(low) {
+                        // Target is statically known and valid
+                        return Instr {
+                            opcode: EvmOpcode::SWAP2,
+                            operands: vec![Operand::JumpDest { addr: low as u16 }],
+                            sp_offset: 0,
+                        }
+                    } else {
+                        // TODO: create invalid jumpdest
+                        return Instr::invalid();
+                    }
+                }
+            },
+            EvmOpcode::JUMPI => {
+                if let Argument::Immediate { value } = args[0] {
+                    let in_bounds = unsafe {
+                        u256::is_ltpow2_u256(value, VmRom::MAX_CODESIZE)
+                    };
+                    let low = value.low_u64();
+                    if in_bounds & rom.is_jumpdest(low) {
+                        // Target is statically known and valid
+                        return Instr {
+                            opcode: EvmOpcode::SWAP3,
+                            operands: vec![
+                                Operand::JumpDest { addr: low as u16 },
+                                args[1].to_operand(imms)
+                            ],
+                            sp_offset: 0,
+                        }
+                    } else {
+                        // TODO: create invalid jumpdest
+                        return Instr::invalid();
+                    }
+                }
+            },
+            _ => (),
+        }
+        //
         let mut v = vec![];
         if let Some(arg) = retarg {
-            v.push(arg);
+            v.push(arg.to_operand(imms));
         }
         for a in args {
-            v.push(*a);
+            v.push((*a).to_operand(imms));
         }
         Instr {
             opcode,
-            args: v,
+            operands: v,
             sp_offset: 0,
         }
     }
 
-    fn set2(dst0: Argument, dst1: Argument, src0: Argument, src1: Argument) -> Instr {
+    fn set2(dst0: Argument, dst1: Argument, src0: Argument, src1: Argument, imms: &mut Vec<U256>) -> Instr {
         let mut v = vec![];
-        v.push(dst0);
-        v.push(dst1);
-        v.push(src0);
-        v.push(src1);
+        v.push(dst0.to_operand(imms));
+        v.push(dst1.to_operand(imms));
+        v.push(src0.to_operand(imms));
+        v.push(src1.to_operand(imms));
         Instr {
             opcode: EvmOpcode::SWAP1,
-            args: v,
+            operands: v,
             sp_offset: 0,
         }
     }
@@ -105,22 +147,28 @@ impl<'a> fmt::Display for InstrWithConsts<'a> {
         let s = self.instr.opcode.to_string().to_lowercase();
         let s = if s == "swap1" {
             "set2".to_string()
+        } else if s == "swap2" {
+            "jumpv".to_string()
+        } else if s == "swap3" {
+            "jumpiv".to_string()
         } else {
             s
         };
         let res = write!(f, "{:<7} ", s);
 
-        for arg in self.instr.args.iter() {
-            match arg {
-                Argument::Immediate { value } => {
+        for opr in self.instr.operands.iter() {
+            match opr {
+                Operand::Immediate { index } => {
+                    let value = self.consts[*index as usize];
                     write!(f, "${}, ", value.0[0]);
                 },
-                Argument::Input { id: _, address } => {
-                    write!(f, "@{:+}, ", address);
+                Operand::Address { offset } => {
+                    write!(f, "@{:+}, ", offset);
                 },
-                Argument::Temporary { id } => {
-                    write!(f, "r{}, ", id);
+                Operand::JumpDest { addr } => {
+                    write!(f, "{:02x}h, ", addr);
                 },
+                _ => panic!("only immediate, address or jumpdest are valid")
             }
         }
         let sp_offset = self.instr.sp_offset;
@@ -131,33 +179,6 @@ impl<'a> fmt::Display for InstrWithConsts<'a> {
     }
 }
 
-impl<'a> fmt::Display for InstrWithConstsAndLifetimes<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let s = self.instr.opcode.to_string().to_lowercase();
-        let res = write!(f, "{} ", s);
-
-        for arg in self.instr.args.iter() {
-            match arg {
-                Argument::Immediate { value } => {
-                    write!(f, "${}, ", value.0[0]);
-                },
-                Argument::Input { id: _, address } => {
-                    write!(f, "@{}, ", address);
-                },
-                Argument::Temporary { id } => {
-                    let res = self.lifetimes.iter().find(|&tu| tu.2 == *id);
-                    let (_,_,_,_,addr) = res.unwrap();
-                    write!(f, "@{}, ", addr);
-                },
-            }
-        }
-        let sp_offset = self.instr.sp_offset;
-        if sp_offset != 0 {
-            write!(f, "({:+})", sp_offset);
-        }
-        res
-    }
-}
 
 #[derive(Debug, Copy, Clone)]
 enum Argument {
@@ -172,6 +193,25 @@ struct StaticStack {
     rcs: HashMap<u16, usize>,
     lifetimes: HashMap<u16, (isize, Option<isize>)>,
     next_id: u16,
+}
+
+impl Argument {
+    fn to_operand(&self, imms: &mut Vec<U256>) -> Operand {
+        match *self {
+            Argument::Immediate { value } => {
+                // TODO: assert if u16 is too small (should not happen)
+                let index = imms.len() as u16;
+                imms.push(value);
+                Operand::Immediate { index }
+            },
+            Argument::Input { id: _, address } => {
+                Operand::Address { offset: address }
+            },
+            Argument::Temporary { id } => {
+                Operand::Temporary { id }
+            },
+        }
+    }
 }
 
 impl StaticStack {
@@ -300,7 +340,9 @@ impl StaticStack {
     fn eval_opcode(
         &mut self,
         opcode: EvmOpcode,
+        rom: &VmRom,
         pc: isize,
+        imms: &mut Vec<U256>,
     ) -> Result<Instr, &str> {
         let (delta, alpha) = opcode.delta_alpha();
         assert!(alpha == 0 || alpha == 1);
@@ -323,14 +365,15 @@ impl StaticStack {
         } else {
             (stack, None)
         };
-        Ok(Instr::new(opcode, reg, &args[0..delta]))
+        Ok(Instr::new(opcode, reg, &args[0..delta], rom, imms))
     }
 
     fn eval_block<'a>(
         &mut self,
         bytecode: &[u8],
-        consts: &mut Vec<U256>,
-        instrs: &mut Vec<Instr>
+        rom: &VmRom,
+        imms: &mut Vec<U256>,
+        instrs: &mut Vec<Instr>,
     ) {
         let mut block_pc = 0;
         let mut i = 0;
@@ -345,7 +388,6 @@ impl StaticStack {
                 let mut buffer: [u8; 32] = [0; 32];
                 VmRom::swap_bytes(&bytecode[start..end], &mut buffer);
                 let value = U256::from_slice(unsafe { std::mem::transmute::<_, &[u64; 4]>(&buffer) });
-                let index = consts.len();
                 self.push(Argument::Immediate { value }, block_pc);
                 i += num_bytes;
             } else if opcode.is_dup() {
@@ -361,7 +403,7 @@ impl StaticStack {
                 ()
             } else {
                 // handle non-stack opcodes
-                let res = self.eval_opcode(opcode, block_pc);
+                let res = self.eval_opcode(opcode, &rom, block_pc, imms);
                 block_pc += 1;
                 if let Ok(instr) = res {
                     instrs.push(instr);
@@ -398,7 +440,6 @@ impl StaticStack {
     fn alloc_stack_slots(
         &mut self,
         instrs: &mut [Instr],
-        consts: &[U256],
         instr_len: usize,
         block_info: &BbInfo,
     ) {
@@ -508,14 +549,13 @@ impl StaticStack {
 
         // patch instruction temporaries with their allocated stack slots
         for instr in instrs {
-            for arg in &mut instr.args {
-                match arg {
-                    Argument::Temporary { id } => {
+            for opr in &mut instr.operands {
+                match opr {
+                    Operand::Temporary { id } => {
                         let res = sorted_lifetimes.iter().find(|&tu| tu.2 == *id);
                         let (_,_,_,_,addr) = res.unwrap();
-                        *arg = Argument::Input {
-                            id: u16::MAX,
-                            address: *addr
+                        *opr = Operand::Address {
+                            offset: *addr
                         };
                     },
                     _ => (),
@@ -524,7 +564,7 @@ impl StaticStack {
         }
     }
 
-    fn block_fixup(&mut self, instrs: &mut Vec<Instr>) {
+    fn block_fixup(&mut self, imms: &mut Vec<U256>, instrs: &mut Vec<Instr>) {
         let diff = self.len() as isize - self.size() as isize;
         let mut sets = self.args
             .iter()
@@ -557,10 +597,10 @@ impl StaticStack {
             let s1 = sets.next();
             match (s0, s1) {
                 (Some((dst0, src0)), Some((dst1, src1))) => {
-                    instrs.push(Instr::set2(dst0, dst1, src0, src1));
+                    instrs.push(Instr::set2(dst0, dst1, src0, src1, imms));
                 },
                 (Some((dst, src)), None) => {
-                    instrs.push(Instr::set2(dst, dst, src, src));
+                    instrs.push(Instr::set2(dst, dst, src, src, imms));
                     break;
                 },
                 (None, None) => break,
@@ -621,11 +661,11 @@ pub fn build_super_instructions(bytecode: &[u8], schedule: &Schedule) {
         // build super instructions
         stack.clear(block_info.stack_min_size as usize);
         let block = &bytecode[block_offset as usize..(block_offset + block_bytes_len) as usize];
-        stack.eval_block(block, &mut consts, &mut instrs);
+        stack.eval_block(block, &rom, &mut consts, &mut instrs);
 
         let block_instr_len = instrs.len() - start_instr;
-        stack.alloc_stack_slots(&mut instrs[start_instr..], &consts, block_instr_len, &block_info);
-        stack.block_fixup(&mut instrs);
+        stack.alloc_stack_slots(&mut instrs[start_instr..], block_instr_len, &block_info);
+        stack.block_fixup(&mut consts, &mut instrs);
         start_instr = instrs.len();
 
         block_offset += block_bytes_len;
