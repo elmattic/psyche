@@ -112,9 +112,8 @@ impl<'a> fmt::Display for InstrWithConsts<'a> {
 
         for arg in self.instr.args.iter() {
             match arg {
-                Argument::Constant { offset } => {
-                    let v = self.consts[*offset as usize];
-                    write!(f, "${}, ", v.0[0]);
+                Argument::Immediate { value } => {
+                    write!(f, "${}, ", value.0[0]);
                 },
                 Argument::Input { id: _, address } => {
                     write!(f, "@{:+}, ", address);
@@ -139,9 +138,8 @@ impl<'a> fmt::Display for InstrWithConstsAndLifetimes<'a> {
 
         for arg in self.instr.args.iter() {
             match arg {
-                Argument::Constant { offset } => {
-                    let v = self.consts[*offset as usize];
-                    write!(f, "${}, ", v.0[0]);
+                Argument::Immediate { value } => {
+                    write!(f, "${}, ", value.0[0]);
                 },
                 Argument::Input { id: _, address } => {
                     write!(f, "@{}, ", address);
@@ -163,7 +161,7 @@ impl<'a> fmt::Display for InstrWithConstsAndLifetimes<'a> {
 
 #[derive(Debug, Copy, Clone)]
 enum Argument {
-    Constant { offset: u16 },
+    Immediate { value: U256 },
     Input { id: u16, address: i16 },
     Temporary { id: u16 },
 }
@@ -216,7 +214,7 @@ impl StaticStack {
         let id = match arg {
             Argument::Input { id, address: _ } => Some(id),
             Argument::Temporary { id } => Some(id),
-            Argument::Constant { offset: _ } => None,
+            Argument::Immediate { value: _ } => None,
         };
         if let Some(id) = id {
             if let Some(v) = self.rcs.get_mut(&id) {
@@ -241,7 +239,7 @@ impl StaticStack {
         let id = match arg {
             Argument::Input { id, address: _ } => Some(id),
             Argument::Temporary { id } => Some(id),
-            Argument::Constant { offset: _ } => None,
+            Argument::Immediate { value: _ } => None,
         };
         if let Some(id) = id {
             let v = self.rcs.get_mut(&id).unwrap();
@@ -281,7 +279,7 @@ impl StaticStack {
         let id = match arg {
             Argument::Input { id, address: _ } => Some(id),
             Argument::Temporary { id } => Some(id),
-            Argument::Constant { offset: _ } => None,
+            Argument::Immediate { value: _ } => None,
         };
         if let Some(id) = id {
             let v = self.rcs.get_mut(id).unwrap();
@@ -307,7 +305,7 @@ impl StaticStack {
         let (delta, alpha) = opcode.delta_alpha();
         assert!(alpha == 0 || alpha == 1);
         // pop delta arguments off the stack
-        let mut args = [ Argument::Constant { offset: 0 }; 7];
+        let mut args = [ Argument::Immediate { value: U256::default() }; 7];
         let stack = (0..delta).fold(Ok(self), |res, i| {
             if let Ok(stack) = res {
                 let (stack, arg) = stack.pop(pc);
@@ -348,8 +346,7 @@ impl StaticStack {
                 VmRom::swap_bytes(&bytecode[start..end], &mut buffer);
                 let value = U256::from_slice(unsafe { std::mem::transmute::<_, &[u64; 4]>(&buffer) });
                 let index = consts.len();
-                consts.push(value);
-                self.push(Argument::Constant{ offset: index as u16 }, block_pc);
+                self.push(Argument::Immediate { value }, block_pc);
                 i += num_bytes;
             } else if opcode.is_dup() {
                 let index = opcode.dup_index();
@@ -408,12 +405,13 @@ impl StaticStack {
         // for arg in stack.args.iter() {
         //     println!(">> {:?}", arg);
         // }
-        for instr in instrs.iter() {
-            println!("{}", Instr::with_consts(instr, &consts));
-        }
+        // for instr in instrs.iter() {
+        //     println!("{}", Instr::with_consts(instr, &consts));
+        // }
+        let print_log = false;
 
         let diff = self.len() as isize - self.size() as isize;
-        println!("diff: {}", diff);
+        //println!("diff: {}", diff);
 
         let mut constraints: HashMap<u16, i16> = HashMap::new();
 
@@ -422,7 +420,7 @@ impl StaticStack {
             //println!("{:?}", arg);
             match arg {
                 Argument::Temporary { id } => {
-                    println!("need to allocate @{} to temporary r{}", ref_address, id);
+                    //println!("need to allocate @{} to temporary r{}", ref_address, id);
                     constraints.insert(*id, ref_address as i16);
                 },
                 _ => (),
@@ -430,13 +428,13 @@ impl StaticStack {
             ref_address -= 1;
         }
         if self.args.is_empty() {
-            println!("nothing to do because stack at the end is empty");
+            //println!("nothing to do because stack at the end is empty");
         }
 
         //Self::print_lifetimes(self, instr_len);
 
         let end_pc = instr_len as isize -1;
-        println!("lifetimes:");
+        //println!("lifetimes:");
         let mut sorted_lifetimes: Vec<(isize, isize, u16, bool, i16)> = vec!();
         for (k, v) in &self.lifetimes {
             let id = k;
@@ -464,13 +462,12 @@ impl StaticStack {
                 }
             });
         }
-        println!("sorted: {:?}", sorted_lifetimes);
+        //println!("sorted: {:?}", sorted_lifetimes);
 
         let mut free_slots: Vec<i16> = vec!();
         for i in 0..block_info.stack_rel_max_size {
             free_slots.push(i as i16);
         }
-        let print_log = false;
         let mut pc: isize = 0;
         let mut start_idx = 0;
         while pc < instr_len as isize {
@@ -536,9 +533,9 @@ impl StaticStack {
             .filter_map(|(i, arg)| {
                 let ref_address = diff - 1 - i as isize;
                 match arg {
-                    Argument::Constant { offset } => {
+                    Argument::Immediate { value } => {
                         Some((Argument::Input { id: u16::MAX, address: ref_address as i16 },
-                            Argument::Constant { offset: *offset }
+                            Argument::Immediate { value: *value }
                         ))
                     },
                     Argument::Input { id, address } => {

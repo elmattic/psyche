@@ -22,7 +22,7 @@ use std::arch::x86_64::*;
 use std::mem::MaybeUninit;
 
 #[repr(align(32))]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct U256(pub [u64; 4]);
 
 #[repr(align(32))]
