@@ -1383,6 +1383,14 @@ impl VmRom {
         }
     }
 
+    pub fn get_bb_info_mut(&mut self, addr: u64) -> &mut BbInfo {
+        unsafe {
+            let offset = VmRom::BB_INFOS_OFFSET as isize;
+            let bb_infos = self.data.as_mut_ptr().offset(offset) as *mut BbInfo;
+            &mut *bb_infos.offset(addr as isize)
+        }
+    }
+
     pub fn get_block_info(&self, idx: u32) -> &BbInfo {
         unsafe {
             let offset = VmRom::BLOCK_INFOS_OFFSET as isize;

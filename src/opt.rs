@@ -140,6 +140,10 @@ impl Instr {
             sp_offset: 0,
         }
     }
+
+    fn size(&self) -> usize {
+        8
+    }
 }
 
 impl<'a> fmt::Display for InstrWithConsts<'a> {
@@ -629,6 +633,7 @@ pub fn build_super_instructions(bytecode: &[u8], schedule: &Schedule) {
     let mut consts: Vec<U256> = Vec::new();
     let mut instrs: Vec<Instr> = Vec::new();
     let mut start_instr = 0;
+    let mut super_block_offset = 0;
 
     let block_infos_len = rom.block_infos_len();
     let mut block_offset: isize = 0;
@@ -666,12 +671,18 @@ pub fn build_super_instructions(bytecode: &[u8], schedule: &Schedule) {
         let block_instr_len = instrs.len() - start_instr;
         stack.alloc_stack_slots(&mut instrs[start_instr..], block_instr_len, &block_info);
         stack.block_fixup(&mut consts, &mut instrs);
+
+        // patch jump addresses
+        let mut v = rom.get_bb_info_mut(block_offset as u64);
+        v.start_addr.1 = super_block_offset;
+        for instr in &instrs[start_instr..] {
+            super_block_offset += instr.size() as u16;
+        }
+
         start_instr = instrs.len();
 
         block_offset += block_bytes_len;
     }
-
-    // patch jump addresses
 
     // compress constants (optional)
 
