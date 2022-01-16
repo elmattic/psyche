@@ -22,6 +22,7 @@ use crate::u256;
 use crate::u256::U256;
 
 use std::collections::{HashMap};
+use std::convert::From;
 use std::fmt;
 
 type Lifetime = (isize, isize, u16, bool, i16);
@@ -34,9 +35,392 @@ enum Operand {
     Temporary { id: u16 }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+struct Opcode(pub u8);
+
+impl Opcode {
+    pub const fn to_u8(self) -> u8 {
+        self.0
+    }
+}
+
+impl From<EvmOpcode> for Opcode {
+    fn from(opcode: EvmOpcode) -> Self {
+        const TO_INTERNAL: [Opcode; 256] = [
+            Opcode::STOP,
+            Opcode::ADD,
+            Opcode::MUL,
+            Opcode::SUB,
+            Opcode::DIV,
+            Opcode::SDIV,
+            Opcode::MOD,
+            Opcode::SMOD,
+            Opcode::ADDMOD,
+            Opcode::MULMOD,
+            Opcode::EXP,
+            Opcode::SIGNEXTEND,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::LT,
+            Opcode::GT,
+            Opcode::SLT,
+            Opcode::SGT,
+            Opcode::EQ,
+            Opcode::ISZERO,
+            Opcode::AND,
+            Opcode::OR,
+            Opcode::XOR,
+            Opcode::NOT,
+            Opcode::BYTE,
+            Opcode::SHL,
+            Opcode::SHR,
+            Opcode::SAR,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::SHA3,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,//Opcode::ADDRESS,
+            Opcode::INVALID,//Opcode::BALANCE,
+            Opcode::INVALID,//Opcode::ORIGIN,
+            Opcode::INVALID,//Opcode::CALLER,
+            Opcode::INVALID,//Opcode::CALLVALUE,
+            Opcode::INVALID,//Opcode::CALLDATALOAD,
+            Opcode::INVALID,//Opcode::CALLDATASIZE,
+            Opcode::INVALID,//Opcode::CALLDATACOPY,
+            Opcode::INVALID,//Opcode::CODESIZE,
+            Opcode::INVALID,//Opcode::CODECOPY,
+            Opcode::INVALID,//Opcode::GASPRICE,
+            Opcode::INVALID,//Opcode::EXTCODESIZE,
+            Opcode::INVALID,//Opcode::EXTCODECOPY,
+            Opcode::INVALID,//Opcode::RETURNDATASIZE,
+            Opcode::INVALID,//Opcode::RETURNDATACOPY,
+            Opcode::INVALID,//Opcode::EXTCODEHASH,
+            Opcode::INVALID,//Opcode::BLOCKHASH,
+            Opcode::INVALID,//Opcode::COINBASE,
+            Opcode::INVALID,//Opcode::TIMESTAMP,
+            Opcode::INVALID,//Opcode::NUMBER,
+            Opcode::INVALID,//Opcode::DIFFICULTY,
+            Opcode::INVALID,//Opcode::GASLIMIT,
+            Opcode::INVALID,//Opcode::CHAINID,
+            Opcode::INVALID,//Opcode::SELFBALANCE,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,//Opcode::POP,
+            Opcode::MLOAD,
+            Opcode::MSTORE,
+            Opcode::MSTORE8,
+            Opcode::SLOAD,
+            Opcode::SSTORE,
+            Opcode::JUMP,
+            Opcode::JUMPI,
+            Opcode::PC,
+            Opcode::MSIZE,//Opcode::MSIZE,
+            Opcode::GAS,//Opcode::GAS,
+            Opcode::INVALID,//Opcode::JUMPDEST,
+            Opcode::INVALID,//Opcode::BEGINSUB,
+            Opcode::INVALID,//Opcode::RETURNSUB,
+            Opcode::INVALID,//Opcode::JUMPSUB,
+            Opcode::INVALID,
+            Opcode::MADD,//Opcode::PUSH1,
+            Opcode::SET2,//Opcode::PUSH2,
+            Opcode::JUMPV,//Opcode::PUSH3,
+            Opcode::JUMPIV,//Opcode::PUSH4,
+            Opcode::INVALID,//Opcode::PUSH5,
+            Opcode::INVALID,//Opcode::PUSH6,
+            Opcode::INVALID,//Opcode::PUSH7,
+            Opcode::INVALID,//Opcode::PUSH8,
+            Opcode::INVALID,//Opcode::PUSH9,
+            Opcode::INVALID,//Opcode::PUSH10,
+            Opcode::INVALID,//Opcode::PUSH11,
+            Opcode::INVALID,//Opcode::PUSH12,
+            Opcode::INVALID,//Opcode::PUSH13,
+            Opcode::INVALID,//Opcode::PUSH14,
+            Opcode::INVALID,//Opcode::PUSH15,
+            Opcode::INVALID,//Opcode::PUSH16,
+            Opcode::INVALID,//Opcode::PUSH17,
+            Opcode::INVALID,//Opcode::PUSH18,
+            Opcode::INVALID,//Opcode::PUSH19,
+            Opcode::INVALID,//Opcode::PUSH20,
+            Opcode::INVALID,//Opcode::PUSH21,
+            Opcode::INVALID,//Opcode::PUSH22,
+            Opcode::INVALID,//Opcode::PUSH23,
+            Opcode::INVALID,//Opcode::PUSH24,
+            Opcode::INVALID,//Opcode::PUSH25,
+            Opcode::INVALID,//Opcode::PUSH26,
+            Opcode::INVALID,//Opcode::PUSH27,
+            Opcode::INVALID,//Opcode::PUSH28,
+            Opcode::INVALID,//Opcode::PUSH29,
+            Opcode::INVALID,//Opcode::PUSH30,
+            Opcode::INVALID,//Opcode::PUSH31,
+            Opcode::INVALID,//Opcode::PUSH32,
+            Opcode::INVALID,//Opcode::DUP1,
+            Opcode::INVALID,//Opcode::DUP2,
+            Opcode::INVALID,//Opcode::DUP3,
+            Opcode::INVALID,//Opcode::DUP4,
+            Opcode::INVALID,//Opcode::DUP5,
+            Opcode::INVALID,//Opcode::DUP6,
+            Opcode::INVALID,//Opcode::DUP7,
+            Opcode::INVALID,//Opcode::DUP8,
+            Opcode::INVALID,//Opcode::DUP9,
+            Opcode::INVALID,//Opcode::DUP10,
+            Opcode::INVALID,//Opcode::DUP11,
+            Opcode::INVALID,//Opcode::DUP12,
+            Opcode::INVALID,//Opcode::DUP13,
+            Opcode::INVALID,//Opcode::DUP14,
+            Opcode::INVALID,//Opcode::DUP15,
+            Opcode::INVALID,//Opcode::DUP16,
+            Opcode::INVALID,//Opcode::SWAP1,
+            Opcode::INVALID,//Opcode::SWAP2,
+            Opcode::INVALID,//Opcode::SWAP3,
+            Opcode::INVALID,//Opcode::SWAP4,
+            Opcode::INVALID,//Opcode::SWAP5,
+            Opcode::INVALID,//Opcode::SWAP6,
+            Opcode::INVALID,//Opcode::SWAP7,
+            Opcode::INVALID,//Opcode::SWAP8,
+            Opcode::INVALID,//Opcode::SWAP9,
+            Opcode::INVALID,//Opcode::SWAP10,
+            Opcode::INVALID,//Opcode::SWAP11,
+            Opcode::INVALID,//Opcode::SWAP12,
+            Opcode::INVALID,//Opcode::SWAP13,
+            Opcode::INVALID,//Opcode::SWAP14,
+            Opcode::INVALID,//Opcode::SWAP15,
+            Opcode::INVALID,//Opcode::SWAP16,
+            Opcode::INVALID,//Opcode::LOG0,
+            Opcode::INVALID,//Opcode::LOG1,
+            Opcode::INVALID,//Opcode::LOG2,
+            Opcode::INVALID,//Opcode::LOG3,
+            Opcode::INVALID,//Opcode::LOG4,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,//Opcode::CREATE,
+            Opcode::INVALID,//Opcode::CALL,
+            Opcode::INVALID,//Opcode::CALLCODE,
+            Opcode::RETURN,
+            Opcode::INVALID,//Opcode::DELEGATECALL,
+            Opcode::INVALID,//Opcode::CREATE2,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,//Opcode::STATICCALL,
+            Opcode::INVALID,
+            Opcode::INVALID,
+            Opcode::INVALID,//Opcode::REVERT,
+            Opcode::INVALID,
+            Opcode::INVALID,//Opcode::SELFDESTRUCT,
+        ];
+        TO_INTERNAL[opcode as usize]
+    }
+}
+
+impl Opcode {
+    pub const STOP: Opcode = Opcode(0x00);
+    pub const ADD: Opcode = Opcode(0x01);
+    pub const MUL: Opcode = Opcode(0x02);
+    pub const SUB: Opcode = Opcode(0x03);
+    pub const DIV: Opcode = Opcode(0x04);
+    pub const SDIV: Opcode = Opcode(0x05);
+    pub const MOD: Opcode = Opcode(0x06);
+    pub const SMOD: Opcode = Opcode(0x07);
+    pub const ADDMOD: Opcode = Opcode(0x08);
+    pub const MULMOD: Opcode = Opcode(0x09);
+    pub const EXP: Opcode = Opcode(0x0a);
+    pub const SIGNEXTEND: Opcode = Opcode(0x0b);
+
+    pub const LT: Opcode = Opcode(0x10);
+    pub const GT: Opcode = Opcode(0x11);
+    pub const SLT: Opcode = Opcode(0x12);
+    pub const SGT: Opcode = Opcode(0x13);
+    pub const EQ: Opcode = Opcode(0x14);
+    pub const ISZERO: Opcode = Opcode(0x15);
+    pub const AND: Opcode = Opcode(0x16);
+    pub const OR: Opcode = Opcode(0x17);
+    pub const XOR: Opcode = Opcode(0x18);
+    pub const NOT: Opcode = Opcode(0x19);
+    pub const BYTE: Opcode = Opcode(0x1a);
+    pub const SHL: Opcode = Opcode(0x1b);
+    pub const SHR: Opcode = Opcode(0x1c);
+    pub const SAR: Opcode = Opcode(0x1d);
+
+    pub const SHA3: Opcode = Opcode(0x20);
+
+    pub const MLOAD: Opcode = Opcode(0x51);
+    pub const MSTORE: Opcode = Opcode(0x52);
+    pub const MSTORE8: Opcode = Opcode(0x53);
+    pub const SLOAD: Opcode = Opcode(0x54);
+    pub const SSTORE: Opcode = Opcode(0x55);
+    pub const JUMP: Opcode = Opcode(0x56);
+    pub const JUMPI: Opcode = Opcode(0x57);
+    pub const PC: Opcode = Opcode(0x58);
+    pub const MSIZE: Opcode = Opcode(0x59);
+    pub const GAS: Opcode = Opcode(0x5a);
+
+    pub const MADD: Opcode = Opcode(0x60); // reuse PUSH1
+    pub const SET2: Opcode = Opcode(0x61); // reuse PUSH2
+    pub const JUMPV: Opcode = Opcode(0x62); // reuse PUSH3
+    pub const JUMPIV: Opcode = Opcode(0x63); // reuse PUSH4
+
+    pub const RETURN: Opcode = Opcode(0xf3);
+
+    pub const INVALID: Opcode = Opcode(0xfe);
+}
+
+impl Opcode {
+    pub const fn mnemonic(&self) -> &'static str {
+        match *self {
+            Opcode::STOP => "stop",
+            Opcode::ADD => "add",
+            Opcode::MUL => "mul",
+            Opcode::SUB => "sub",
+            Opcode::DIV => "div",
+            Opcode::SDIV => "sdiv",
+            Opcode::MOD => "mod",
+            Opcode::SMOD => "smod",
+            Opcode::ADDMOD => "addmod",
+            Opcode::MULMOD => "mulmod",
+            Opcode::EXP => "exp",
+            Opcode::SIGNEXTEND => "signextend",
+
+            Opcode::LT => "lt",
+            Opcode::GT => "gt",
+            Opcode::SLT => "slt",
+            Opcode::SGT => "sgt",
+            Opcode::EQ => "eq",
+            Opcode::ISZERO => "iszero",
+            Opcode::AND => "and",
+            Opcode::OR => "or",
+            Opcode::XOR => "xor",
+            Opcode::NOT => "not",
+            Opcode::BYTE => "byte",
+            Opcode::SHL => "shl",
+            Opcode::SHR => "shr",
+            Opcode::SAR => "sar",
+
+            Opcode::SHA3 => "sha3",
+
+            Opcode::MLOAD => "mload",
+            Opcode::MSTORE => "mstore",
+            Opcode::MSTORE8 => "mstore8",
+            Opcode::SLOAD => "sload",
+            Opcode::SSTORE => "sstore",
+            Opcode::JUMP => "jump",
+            Opcode::JUMPI => "jumpi",
+            Opcode::PC => "pc",
+            Opcode::MSIZE => "msize",
+            Opcode::GAS => "gas",
+
+            Opcode::MADD => "madd",
+            Opcode::SET2 => "set2",
+            Opcode::JUMPV => "jumpv",
+            Opcode::JUMPIV => "jumpiv",
+
+            Opcode::RETURN => "return",
+
+            Opcode::INVALID => "invalid",
+
+            _ => unimplemented!()
+        }
+    }
+}
+
 #[derive(Debug)]
 struct Instr {
-    opcode: EvmOpcode,
+    opcode: Opcode,
     operands: Vec<Operand>,
     sp_offset: i16,
 }
@@ -56,7 +440,7 @@ impl Instr {
 
     fn invalid() -> Instr {
        Instr {
-            opcode: EvmOpcode::INVALID,
+            opcode: Opcode::INVALID,
             operands: vec!(),
             sp_offset: 0,
         }
@@ -79,7 +463,7 @@ impl Instr {
                     if in_bounds & rom.is_jumpdest(low) {
                         // Target is statically known and valid
                         return Instr {
-                            opcode: EvmOpcode::SWAP2,
+                            opcode: Opcode::JUMPV,
                             operands: vec![Operand::JumpDest { addr: low as u16 }],
                             sp_offset: 0,
                         }
@@ -98,7 +482,7 @@ impl Instr {
                     if in_bounds & rom.is_jumpdest(low) {
                         // Target is statically known and valid
                         return Instr {
-                            opcode: EvmOpcode::SWAP3,
+                            opcode: Opcode::JUMPIV,
                             operands: vec![
                                 Operand::JumpDest { addr: low as u16 },
                                 args[1].to_operand(imms)
@@ -122,7 +506,7 @@ impl Instr {
             v.push((*a).to_operand(imms));
         }
         Instr {
-            opcode,
+            opcode: Opcode::from(opcode),
             operands: v,
             sp_offset: 0,
         }
@@ -135,7 +519,7 @@ impl Instr {
         v.push(src0.to_operand(imms));
         v.push(src1.to_operand(imms));
         Instr {
-            opcode: EvmOpcode::SWAP1,
+            opcode: Opcode::SET2,
             operands: v,
             sp_offset: 0,
         }
@@ -148,17 +532,8 @@ impl Instr {
 
 impl<'a> fmt::Display for InstrWithConsts<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let s = self.instr.opcode.to_string().to_lowercase();
-        let s = if s == "swap1" {
-            "set2".to_string()
-        } else if s == "swap2" {
-            "jumpv".to_string()
-        } else if s == "swap3" {
-            "jumpiv".to_string()
-        } else {
-            s
-        };
-        let res = write!(f, "{:<7} ", s);
+        let s = self.instr.opcode.mnemonic();
+        let res = write!(f, "{:<8} ", s);
 
         for opr in self.instr.operands.iter() {
             match opr {
