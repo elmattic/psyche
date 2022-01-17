@@ -18,6 +18,7 @@ use std::convert::TryFrom;
 use std::mem::MaybeUninit;
 
 use crate::opt::build_super_instructions;
+use crate::opt::BlockInfo;
 use crate::instructions::{EvmOpcode, Opcode};
 use crate::schedule::{Fee, Fork, Schedule};
 use crate::u256::*;
@@ -1375,26 +1376,26 @@ impl VmRom {
         (opcode == Opcode::BEGINSUB) & self.is_valid_dest(addr)
     }
 
-    pub fn get_bb_info(&self, addr: u64) -> &BbInfo {
+    pub fn get_bb_info(&self, addr: u64) -> &BlockInfo {
         unsafe {
             let offset = VmRom::BB_INFOS_OFFSET as isize;
-            let bb_infos = self.data.as_ptr().offset(offset) as *mut BbInfo;
+            let bb_infos = self.data.as_ptr().offset(offset) as *mut BlockInfo;
             &*bb_infos.offset(addr as isize)
         }
     }
 
-    pub fn get_bb_info_mut(&mut self, addr: u64) -> &mut BbInfo {
+    pub fn get_bb_info_mut(&mut self, addr: u64) -> &mut BlockInfo {
         unsafe {
             let offset = VmRom::BB_INFOS_OFFSET as isize;
-            let bb_infos = self.data.as_mut_ptr().offset(offset) as *mut BbInfo;
+            let bb_infos = self.data.as_mut_ptr().offset(offset) as *mut BlockInfo;
             &mut *bb_infos.offset(addr as isize)
         }
     }
 
-    pub fn get_block_info(&self, idx: u32) -> &BbInfo {
+    pub fn get_block_info(&self, idx: u32) -> &BlockInfo {
         unsafe {
             let offset = VmRom::BLOCK_INFOS_OFFSET as isize;
-            let block_infos_ptr = self.data.as_ptr().offset(offset) as *mut BbInfo;
+            let block_infos_ptr = self.data.as_ptr().offset(offset) as *mut BlockInfo;
             &*block_infos_ptr.offset(idx as isize)
         }
     }

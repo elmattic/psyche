@@ -15,6 +15,7 @@
 // along with Psyche. If not, see <http://www.gnu.org/licenses/>.
 
 use crate::instructions::EvmOpcode;
+use crate::pex;
 use crate::schedule::Schedule;
 use crate::u256;
 use crate::u256::U256;
@@ -458,7 +459,7 @@ impl Opcode {
 }
 
 #[derive(Debug)]
-struct Instr {
+pub struct Instr {
     opcode: Opcode,
     operands: Vec<Operand>,
     sp_offset: i16,
@@ -470,7 +471,7 @@ struct InstrWithConsts<'a> {
 }
 
 impl Instr {
-    fn with_consts<'a>(instr: &'a Instr, consts: &'a [U256]) -> InstrWithConsts<'a> {
+    fn with_imms<'a>(instr: &'a Instr, consts: &'a [U256]) -> InstrWithConsts<'a> {
         InstrWithConsts {
             instr,
             consts,
@@ -859,13 +860,13 @@ impl StaticStack {
         &mut self,
         instrs: &mut [Instr],
         instr_len: usize,
-        block_info: &BbInfo,
+        block_info: &BlockInfo,
     ) {
         // for arg in stack.args.iter() {
         //     println!(">> {:?}", arg);
         // }
         // for instr in instrs.iter() {
-        //     println!("{}", Instr::with_consts(instr, &consts));
+        //     println!("{}", Instr::with_imms(instr, &consts));
         // }
         let print_log = false;
 
@@ -1038,7 +1039,7 @@ impl StaticStack {
     }
 }
 
-fn build_block_infos(
+pub fn build_block_infos(
     bytecode: &[u8],
     schedule: &Schedule,
     block_infos: &mut Vec<BlockInfo>
@@ -1155,7 +1156,7 @@ fn build_block_infos(
 
     // backward pass, write fwd blocks to block infos
     block_infos.resize(fwd_blocks.len(), BlockInfo::default());
-    let mut i = fwd_blocks.len() as usize - 1;
+    let mut i: isize = fwd_blocks.len() as isize - 1;
     for info in fwd_blocks.iter().rev() {
         if info.is_basic_block {
             stack_min_size = info.stack_min_size;
@@ -1180,29 +1181,33 @@ fn build_block_infos(
         let start_addr = info.addr as u16;
         let block_info =
             BlockInfo::new(stack_min_size, stack_max_size, gas, start_addr);
-        block_infos[i] = block_info;
+        block_infos[i as usize] = block_info;
         i -= 1;
     }
 }
 
-pub fn build_super_instructions(bytecode: &[u8], schedule: &Schedule) {
+pub fn build_super_instructions(
+    bytecode: &[u8],
+    schedule: &Schedule,
+    block_infos: &mut [BlockInfo],
+    imms: &mut Vec<U256>,
+    instrs: &mut Vec<Instr>,
+) {
     let mut rom = VmRom::new();
     rom.init(&bytecode, &schedule);
     //
     let mut stack = StaticStack::new();
-    let mut consts: Vec<U256> = Vec::new();
-    let mut instrs: Vec<Instr> = Vec::new();
     let mut start_instr = 0;
     let mut super_block_offset = 0;
 
-    let block_infos_len = rom.block_infos_len();
+    let block_infos_len = block_infos.len();
     let mut block_offset: isize = 0;
     assert!(block_infos_len > 0);
     for i in 0..block_infos_len {
         //println!("\n==== block #{} ====", i);
-        let block_info = rom.get_block_info(i);
+        let block_info = block_infos[i];
         let block_bytes_len = if i < (block_infos_len-1) {
-            let next_block_info = rom.get_block_info(i+1);
+            let next_block_info = block_infos[i+1];
             next_block_info.start_addr.0 - block_info.start_addr.0
         } else {
             bytecode.len() as u16 - block_info.start_addr.0
@@ -1226,11 +1231,11 @@ pub fn build_super_instructions(bytecode: &[u8], schedule: &Schedule) {
         // build super instructions
         stack.clear(block_info.stack_min_size as usize);
         let block = &bytecode[block_offset as usize..(block_offset + block_bytes_len) as usize];
-        stack.eval_block(block, &rom, &mut consts, &mut instrs);
+        stack.eval_block(block, &rom, imms, instrs);
 
         let block_instr_len = instrs.len() - start_instr;
         stack.alloc_stack_slots(&mut instrs[start_instr..], block_instr_len, &block_info);
-        stack.block_fixup(&mut consts, &mut instrs);
+        stack.block_fixup(imms, instrs);
 
         // patch jump addresses
         let mut v = rom.get_bb_info_mut(block_offset as u64);
@@ -1248,7 +1253,7 @@ pub fn build_super_instructions(bytecode: &[u8], schedule: &Schedule) {
 
     println!("");
     for instr in instrs.iter() {
-        let ic = Instr::with_consts(instr, &consts);
+        let ic = Instr::with_imms(instr, &imms);
         println!("{}", ic);
     }
 }

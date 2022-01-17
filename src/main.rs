@@ -151,7 +151,7 @@ fn evm(bytecode: &Vec<u8>, fork: Fork, gas_limit: U256) {
     rom.init(&bytecode, &schedule);
     if true {
         let pex = pex::build(bytecode, &schedule);
-        opt::build_super_instructions(bytecode, &schedule);
+        //opt::build_super_instructions(bytecode, &schedule);
     }
     let mut memory = VmMemory::new();
     memory.init(gas_limit);
