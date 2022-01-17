@@ -21,6 +21,7 @@ extern crate num_derive;
 mod assembler;
 mod instructions;
 mod opt;
+mod pex;
 mod schedule;
 mod u256;
 mod utils;
@@ -34,7 +35,6 @@ use std::fs;
 use std::str::FromStr;
 
 use instructions::{EvmInstruction, EvmOpcode};
-use opt::build_super_instructions;
 use schedule::{Fork, Schedule};
 use u256::U256;
 use utils::{decode_hex, encode_hex, print_config};
@@ -145,17 +145,18 @@ fn disasm(input: &str) {
     }
 }
 
-fn evm(bytes: &Vec<u8>, fork: Fork, gas_limit: U256) {
+fn evm(bytecode: &Vec<u8>, fork: Fork, gas_limit: U256) {
     let schedule = Schedule::from_fork(fork);
     let mut rom = VmRom::new();
-    rom.init(&bytes, &schedule);
-    if false {
-        build_super_instructions(bytes, &schedule);
+    rom.init(&bytecode, &schedule);
+    if true {
+        let pex = pex::build(bytecode, &schedule);
+        opt::build_super_instructions(bytecode, &schedule);
     }
     let mut memory = VmMemory::new();
     memory.init(gas_limit);
     let (err, slice) = unsafe {
-        let ret_data = run_evm(&bytes, &rom, &schedule, gas_limit, &mut memory);
+        let ret_data = run_evm(&bytecode, &rom, &schedule, gas_limit, &mut memory);
         (
             ret_data.error,
             memory.slice(ret_data.offset as isize, ret_data.size),

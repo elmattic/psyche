@@ -16,16 +16,55 @@
 
 use crate::instructions::EvmOpcode;
 use crate::schedule::Schedule;
-use crate::vm::VmRom;
-use crate::vm::BbInfo;
 use crate::u256;
 use crate::u256::U256;
+use crate::vm::BbInfo;
+use crate::vm::OPCODE_INFOS;
+use crate::vm::VmRom;
 
 use std::collections::{HashMap};
 use std::convert::From;
 use std::fmt;
 
-type Lifetime = (isize, isize, u16, bool, i16);
+type LiveRange = (isize, isize, u16, bool, i16);
+
+#[derive(Debug, Copy, Clone)]
+pub struct BlockInfo {
+    pub stack_min_size: u16,
+    pub stack_rel_max_size: u16,
+    pub start_addr: (u16, u16),
+    pub gas: u64,
+}
+
+impl BlockInfo {
+    pub fn default() -> BlockInfo {
+        BlockInfo {
+            stack_min_size: 0,
+            stack_rel_max_size: 0,
+            start_addr: (0, 0),
+            gas: 0,
+        }
+    }
+
+    fn new(
+        stack_min_size: u16,
+        stack_max_size: u16,
+        gas: u64,
+        start_addr: u16,
+    ) -> BlockInfo {
+        let stack_rel_max_size = if stack_max_size > stack_min_size {
+            stack_max_size - stack_min_size
+        } else {
+            0
+        };
+        BlockInfo {
+            stack_min_size,
+            stack_rel_max_size,
+            start_addr: (start_addr, 0),
+            gas,
+        }
+    }
+}
 
 #[derive(Debug)]
 enum Operand {
@@ -999,11 +1038,157 @@ impl StaticStack {
     }
 }
 
+fn build_block_infos(
+    bytecode: &[u8],
+    schedule: &Schedule,
+    block_infos: &mut Vec<BlockInfo>
+) {
+    use std::cmp::max;
+    #[derive(Debug)]
+    struct ForwardBlock {
+        addr: u32,
+        stack_min_size: u16,
+        stack_max_size: u16,
+        stack_end_size: u16,
+        gas: u64,
+        is_basic_block: bool,
+    }
+    impl ForwardBlock {
+        fn basic(
+            addr: u32,
+            stack_min_size: u16,
+            stack_max_size: u16,
+            stack_end_size: u16,
+            gas: u64,
+        ) -> ForwardBlock {
+            ForwardBlock {
+                addr,
+                stack_min_size,
+                stack_max_size,
+                stack_end_size,
+                gas,
+                is_basic_block: true,
+            }
+        }
+        fn partial(
+            addr: u32,
+            stack_min_size: u16,
+            stack_max_size: u16,
+            stack_end_size: u16,
+            gas: u64,
+        ) -> ForwardBlock {
+            ForwardBlock {
+                addr,
+                stack_min_size,
+                stack_max_size,
+                stack_end_size,
+                gas,
+                is_basic_block: false,
+            }
+        }
+    }
+    let mut addr: u32 = 0;
+    let mut stack_size: u16 = 0;
+    let mut stack_min_size: u16 = 0;
+    let mut stack_max_size: u16 = 0;
+    let mut gas: u64 = 0;
+    let mut fwd_blocks: Vec<ForwardBlock> = Vec::with_capacity(1024);
+
+    // forward pass over the bytecode
+    let mut i: usize = 0;
+    while i < bytecode.len() {
+        let code = bytecode[i];
+        let opcode = unsafe { std::mem::transmute::<u8, EvmOpcode>(code) };
+        let (_, fee, delta, alpha) = OPCODE_INFOS[code as usize];
+        // new_stack_size is (stack_size + needed + alpha) - delta
+        // and represents the new stack size after the opcode has been
+        // dispatched
+        let (new_stack_size, needed) = if delta > stack_size {
+            (alpha, (delta - stack_size))
+        } else {
+            // case stack_size >= delta
+            ((stack_size - delta).saturating_add(alpha), 0)
+        };
+        stack_size = new_stack_size;
+        stack_min_size = stack_min_size.saturating_add(needed);
+        stack_max_size = max(stack_max_size, new_stack_size);
+        // TODO: overflow possible?
+        gas += fee.gas(schedule) as u64;
+        if opcode.is_push() {
+            let num_bytes = opcode.push_index() + 1;
+            i += 1 + num_bytes;
+        } else {
+            i += 1;
+        }
+        if opcode.is_terminator() || i >= bytecode.len() {
+            fwd_blocks.push(ForwardBlock::basic(
+                addr,
+                stack_min_size,
+                stack_max_size,
+                stack_size,
+                gas,
+            ));
+            addr = i as u32;
+            stack_size = 0;
+            stack_min_size = 0;
+            stack_max_size = 0;
+            gas = 0;
+        } else {
+            let code = bytecode[i];
+            let opcode = unsafe { std::mem::transmute::<u8, EvmOpcode>(code) };
+            if opcode == EvmOpcode::JUMPDEST {
+                fwd_blocks.push(ForwardBlock::partial(
+                    addr,
+                    stack_min_size,
+                    stack_max_size,
+                    stack_size,
+                    gas,
+                ));
+                addr = i as u32;
+                stack_size = 0;
+                stack_min_size = 0;
+                stack_max_size = 0;
+                gas = 0;
+            }
+        }
+    }
+
+    // backward pass, write fwd blocks to block infos
+    block_infos.resize(fwd_blocks.len(), BlockInfo::default());
+    let mut i = fwd_blocks.len() as usize - 1;
+    for info in fwd_blocks.iter().rev() {
+        if info.is_basic_block {
+            stack_min_size = info.stack_min_size;
+            stack_max_size = info.stack_max_size;
+            gas = info.gas;
+        } else {
+            let (more, needed) = if stack_min_size > info.stack_end_size {
+                (0, (stack_min_size - info.stack_end_size))
+            } else {
+                // case info.stack_end_size >= stack_min_size
+                (info.stack_end_size - stack_min_size, 0)
+            };
+            stack_min_size = info.stack_min_size.saturating_add(needed);
+            stack_max_size = max(
+                info.stack_max_size.saturating_add(needed),
+                stack_max_size.saturating_add(more),
+            );
+            gas += info.gas;
+        }
+
+        // write result
+        let start_addr = info.addr as u16;
+        let block_info =
+            BlockInfo::new(stack_min_size, stack_max_size, gas, start_addr);
+        block_infos[i] = block_info;
+        i -= 1;
+    }
+}
+
 pub fn build_super_instructions(bytecode: &[u8], schedule: &Schedule) {
     let mut rom = VmRom::new();
     rom.init(&bytecode, &schedule);
     //
-    let opcodes: *const EvmOpcode = bytecode.as_ptr() as *const EvmOpcode;
     let mut stack = StaticStack::new();
     let mut consts: Vec<U256> = Vec::new();
     let mut instrs: Vec<Instr> = Vec::new();
@@ -1014,7 +1199,7 @@ pub fn build_super_instructions(bytecode: &[u8], schedule: &Schedule) {
     let mut block_offset: isize = 0;
     assert!(block_infos_len > 0);
     for i in 0..block_infos_len {
-        println!("\n==== block #{} ====", i);
+        //println!("\n==== block #{} ====", i);
         let block_info = rom.get_block_info(i);
         let block_bytes_len = if i < (block_infos_len-1) {
             let next_block_info = rom.get_block_info(i+1);
@@ -1022,21 +1207,21 @@ pub fn build_super_instructions(bytecode: &[u8], schedule: &Schedule) {
         } else {
             bytecode.len() as u16 - block_info.start_addr.0
         } as isize;
-        println!("{:?}", block_info);
-        println!("block bytes: {}", block_bytes_len);
+        // println!("{:?}", block_info);
+        // println!("block bytes: {}", block_bytes_len);
 
         // print block opcodes
-        let mut offset: isize = 0;
-        while offset < block_bytes_len {
-            let opcode = unsafe { *opcodes.offset(block_offset + offset) };
-            println!("{:?}", opcode);
-            if opcode.is_push() {
-                let num_bytes = opcode.push_index() as isize + 1;
-                offset += num_bytes;
-            }
-            offset += 1;
-        }
-        println!("");
+        // let mut offset: isize = 0;
+        // while offset < block_bytes_len {
+        //     let opcode = unsafe { *opcodes.offset(block_offset + offset) };
+        //     println!("{:?}", opcode);
+        //     if opcode.is_push() {
+        //         let num_bytes = opcode.push_index() as isize + 1;
+        //         offset += num_bytes;
+        //     }
+        //     offset += 1;
+        // }
+        // println!("");
 
         // build super instructions
         stack.clear(block_info.stack_min_size as usize);
