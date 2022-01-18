@@ -1200,18 +1200,17 @@ pub fn build_super_instructions(
     let mut start_instr = 0;
     let mut super_block_offset = 0;
 
-    let block_infos_len = block_infos.len();
     let mut block_offset: isize = 0;
-    assert!(block_infos_len > 0);
-    for i in 0..block_infos_len {
+    for i in 0..block_infos.len() {
         //println!("\n==== block #{} ====", i);
         let block_info = block_infos[i];
-        let block_bytes_len = if i < (block_infos_len-1) {
+        let block_len = if i < (block_infos.len()-1) {
             let next_block_info = block_infos[i+1];
             next_block_info.start_addr.0 - block_info.start_addr.0
         } else {
             bytecode.len() as u16 - block_info.start_addr.0
         } as isize;
+
         // println!("{:?}", block_info);
         // println!("block bytes: {}", block_bytes_len);
 
@@ -1230,7 +1229,7 @@ pub fn build_super_instructions(
 
         // build super instructions
         stack.clear(block_info.stack_min_size as usize);
-        let block = &bytecode[block_offset as usize..(block_offset + block_bytes_len) as usize];
+        let block = &bytecode[block_offset as usize..(block_offset + block_len) as usize];
         stack.eval_block(block, &rom, imms, instrs);
 
         let block_instr_len = instrs.len() - start_instr;
@@ -1238,18 +1237,16 @@ pub fn build_super_instructions(
         stack.block_fixup(imms, instrs);
 
         // patch jump addresses
-        let mut v = rom.get_bb_info_mut(block_offset as u64);
-        v.start_addr.1 = super_block_offset;
+        let block_info = &mut block_infos[i];
+        block_info.start_addr.1 = super_block_offset;
         for instr in &instrs[start_instr..] {
             super_block_offset += instr.size() as u16;
         }
 
         start_instr = instrs.len();
 
-        block_offset += block_bytes_len;
+        block_offset += block_len;
     }
-
-    // compress constants (optional)
 
     println!("");
     for instr in instrs.iter() {

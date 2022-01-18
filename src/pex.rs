@@ -88,6 +88,8 @@ pub fn build(bytecode: &[u8], schedule: &Schedule) -> Pex {
     println!("size: {} bytes", pex.len());
 
     // write invalid destinations
+    // TODO: mark valid jump dests instead, else we would need to store
+    // original bytecode too, should be more fast too
     let invalid_dests_ptr = pex.invalid_dests_ptr();
     let mut i = 0;
     while i < bytecode.len() {
@@ -110,6 +112,7 @@ pub fn build(bytecode: &[u8], schedule: &Schedule) -> Pex {
     let mut block_infos: Vec<BlockInfo> = vec!();
     opt::build_block_infos(bytecode, schedule, &mut block_infos);
     // write block infos
+    // TODO: move after build_super_instructions!
     for (i, bi) in block_infos.iter().enumerate() {
         unsafe {
             let ptr = pex.block_infos_ptr().offset(i as isize);
@@ -123,6 +126,15 @@ pub fn build(bytecode: &[u8], schedule: &Schedule) -> Pex {
     opt::build_super_instructions(
         bytecode, &schedule, &mut block_infos, &mut imms, &mut instrs,
     );
+
+    // write immediates
+    // for (i, imm) in imms.iter().enumerate() {
+    //     println!("{}: {}", i, imm.0[0]);
+    // }
+
+    // for bi in block_infos {
+    //     println!("{:?}", bi);
+    // }
 
     pex
 }
