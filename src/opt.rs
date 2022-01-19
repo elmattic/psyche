@@ -15,11 +15,10 @@
 // along with Psyche. If not, see <http://www.gnu.org/licenses/>.
 
 use crate::instructions::EvmOpcode;
-use crate::pex;
+use crate::pex::Pex;
 use crate::schedule::Schedule;
 use crate::u256;
 use crate::u256::U256;
-use crate::vm::BbInfo;
 use crate::vm::OPCODE_INFOS;
 use crate::vm::VmRom;
 
@@ -488,50 +487,56 @@ impl Instr {
 
     fn new(
         opcode: EvmOpcode,
+        valid_jumpdests: *const u64,
         retarg: Option<Argument>,
         args: &[Argument],
-        rom: &VmRom,
         imms: &mut Vec<U256>,
     ) -> Instr {
+        let is_jumpdest = |addr: u64| {
+            let addr = (addr as isize) % (Pex::BYTECODE_SIZE as isize);
+            let bits = unsafe { *valid_jumpdests.offset(addr / 64) };
+            let mask = 1 << (addr % 64);
+            (bits & mask) > 0
+        };
         match opcode {
             EvmOpcode::JUMP => {
                 if let Argument::Immediate { value } = args[0] {
                     let in_bounds = unsafe {
-                        u256::is_ltpow2_u256(value, VmRom::MAX_CODESIZE)
+                        u256::is_ltpow2_u256(value, Pex::BYTECODE_SIZE)
                     };
                     let low = value.low_u64();
-                    if in_bounds & rom.is_jumpdest(low) {
+                    let opcode = if in_bounds & is_jumpdest(low) {
                         // Target is statically known and valid
-                        return Instr {
-                            opcode: Opcode::JUMPV,
-                            operands: vec![Operand::JumpDest { addr: low as u16 }],
-                            sp_offset: 0,
-                        }
+                        Opcode::JUMPV
                     } else {
-                        // TODO: create invalid jumpdest
-                        return Instr::invalid();
+                        Opcode::JUMP
+                    };
+                    return Instr {
+                        opcode,
+                        operands: vec![Operand::JumpDest { addr: low as u16 }],
+                        sp_offset: 0,
                     }
                 }
             },
             EvmOpcode::JUMPI => {
                 if let Argument::Immediate { value } = args[0] {
                     let in_bounds = unsafe {
-                        u256::is_ltpow2_u256(value, VmRom::MAX_CODESIZE)
+                        u256::is_ltpow2_u256(value, Pex::BYTECODE_SIZE)
                     };
                     let low = value.low_u64();
-                    if in_bounds & rom.is_jumpdest(low) {
+                    let opcode = if in_bounds & is_jumpdest(low) {
                         // Target is statically known and valid
-                        return Instr {
-                            opcode: Opcode::JUMPIV,
-                            operands: vec![
-                                Operand::JumpDest { addr: low as u16 },
-                                args[1].to_operand(imms)
-                            ],
-                            sp_offset: 0,
-                        }
+                        Opcode::JUMPIV
                     } else {
-                        // TODO: create invalid jumpdest
-                        return Instr::invalid();
+                        Opcode::JUMPI
+                    };
+                    return Instr {
+                        opcode,
+                        operands: vec![
+                            Operand::JumpDest { addr: low as u16 },
+                            args[1].to_operand(imms)
+                        ],
+                        sp_offset: 0,
                     }
                 }
             },
@@ -759,7 +764,7 @@ impl StaticStack {
     fn eval_opcode(
         &mut self,
         opcode: EvmOpcode,
-        rom: &VmRom,
+        valid_jumpdests: *const u64,
         pc: isize,
         imms: &mut Vec<U256>,
     ) -> Result<Instr, &str> {
@@ -784,13 +789,13 @@ impl StaticStack {
         } else {
             (stack, None)
         };
-        Ok(Instr::new(opcode, reg, &args[0..delta], rom, imms))
+        Ok(Instr::new(opcode, valid_jumpdests, reg, &args[0..delta], imms))
     }
 
     fn eval_block<'a>(
         &mut self,
         bytecode: &[u8],
-        rom: &VmRom,
+        valid_jumpdests: *const u64,
         imms: &mut Vec<U256>,
         instrs: &mut Vec<Instr>,
     ) {
@@ -822,7 +827,7 @@ impl StaticStack {
                 ()
             } else {
                 // handle non-stack opcodes
-                let res = self.eval_opcode(opcode, &rom, block_pc, imms);
+                let res = self.eval_opcode(opcode, valid_jumpdests, block_pc, imms);
                 block_pc += 1;
                 if let Ok(instr) = res {
                     instrs.push(instr);
@@ -1039,6 +1044,32 @@ impl StaticStack {
     }
 }
 
+pub fn build_valid_jumpdests(
+    bytecode: &[u8],
+    valid_jump_dests: *mut u64
+) {
+    let mut i = 0;
+    let mut j = 0;
+    let mut bits: u64 = 0;
+    while i < bytecode.len() {
+        let opcode = unsafe { std::mem::transmute::<u8, EvmOpcode>(bytecode[i]) };
+        if opcode == EvmOpcode::JUMPDEST {
+            bits |= 1 << (i % 64);
+        }
+        if opcode.is_push() {
+            let num_bytes = opcode.push_index() + 1;
+            i += num_bytes;
+        }
+        i += 1;
+
+        if ((i / 64) > j) | (i >= bytecode.len()) {
+            unsafe { *valid_jump_dests.offset(j as isize) = bits; }
+            bits = 0;
+            j += 1;
+        }
+    }
+}
+
 pub fn build_block_infos(
     bytecode: &[u8],
     schedule: &Schedule,
@@ -1188,14 +1219,11 @@ pub fn build_block_infos(
 
 pub fn build_super_instructions(
     bytecode: &[u8],
-    schedule: &Schedule,
+    valid_jumpdests: *const u64,
     block_infos: &mut [BlockInfo],
     imms: &mut Vec<U256>,
     instrs: &mut Vec<Instr>,
 ) {
-    let mut rom = VmRom::new();
-    rom.init(&bytecode, &schedule);
-    //
     let mut stack = StaticStack::new();
     let mut start_instr = 0;
     let mut super_block_offset = 0;
@@ -1230,7 +1258,7 @@ pub fn build_super_instructions(
         // build super instructions
         stack.clear(block_info.stack_min_size as usize);
         let block = &bytecode[block_offset as usize..(block_offset + block_len) as usize];
-        stack.eval_block(block, &rom, imms, instrs);
+        stack.eval_block(block, valid_jumpdests, imms, instrs);
 
         let block_instr_len = instrs.len() - start_instr;
         stack.alloc_stack_slots(&mut instrs[start_instr..], block_instr_len, &block_info);
