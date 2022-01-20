@@ -30,13 +30,15 @@ impl Pex {
 
     const HEADER_SIZE: usize = 64;
     const VALID_JUMPDESTS_SIZE: usize = Self::BYTECODE_SIZE / 8;
-    const BLOCK_INFO_SIZE: usize = std::mem::size_of::<BlockInfo>();
-    const BLOCK_INFOS_SIZE: usize = Self::BYTECODE_SIZE * Self::BLOCK_INFO_SIZE;
+    const BLOCK_INFOS_SIZE: usize = Self::BYTECODE_SIZE * std::mem::size_of::<BlockInfo>();
+    const IMMS_SIZE: usize = (16 << 10) * 32;
+    const TEXT_SIZE: usize = Self::BYTECODE_SIZE * 16;
 
     const HEADER_OFFSET: usize = 0;
     const VALID_JUMPDESTS_OFFSET: usize = Self::HEADER_OFFSET + Self::HEADER_SIZE;
     const BLOCK_INFOS_OFFSET: usize = Self::VALID_JUMPDESTS_OFFSET + Self::VALID_JUMPDESTS_SIZE;
-    const TEXT_OFFSET: usize = Self::BLOCK_INFOS_OFFSET + Self::BLOCK_INFOS_SIZE;
+    const IMMS_OFFSET: usize = Self::BLOCK_INFOS_OFFSET + Self::BLOCK_INFOS_SIZE;
+    const TEXT_OFFSET: usize = Self::IMMS_OFFSET + Self::IMMS_SIZE;
 
     pub fn new() -> Pex {
         let mut bytes = Vec::new();
@@ -79,7 +81,14 @@ impl Pex {
         }
     }
 
-    pub fn text_ptr(&mut self) -> *mut u64 {
+    pub fn imms_ptr_mut(&mut self) -> *mut U256 {
+        let offset = Self::TEXT_OFFSET as isize;
+        unsafe {
+            self.bytes.as_mut_ptr().offset(offset) as *mut U256
+        }
+    }
+
+    pub fn text_ptr_mut(&mut self) -> *mut u64 {
         let offset = Self::TEXT_OFFSET as isize;
         unsafe {
             self.bytes.as_mut_ptr().offset(offset) as *mut u64
@@ -98,13 +107,17 @@ pub fn build(bytecode: &[u8], schedule: &Schedule) -> Pex {
     let mut pex = Pex::new();
     println!("size: {} bytes", pex.len());
 
-    // write valid jump destinations
     opt::build_valid_jumpdests(bytecode, pex.valid_jumpdests_mut());
 
     let mut block_infos: Vec<BlockInfo> = vec!();
     opt::build_block_infos(bytecode, schedule, &mut block_infos);
-    // write block infos
-    // TODO: move after build_super_instructions!
+
+    let mut imms: Vec<U256> = vec!();
+    let mut instrs: Vec<Instr> = vec!();
+    opt::build_super_instructions(
+        bytecode, pex.valid_jumpdests(), &mut block_infos, &mut imms, &mut instrs,
+    );
+
     for (i, bi) in block_infos.iter().enumerate() {
         unsafe {
             let ptr = pex.block_infos_ptr().offset(i as isize);
@@ -112,21 +125,19 @@ pub fn build(bytecode: &[u8], schedule: &Schedule) -> Pex {
         }
     }
 
-    let mut imms: Vec<U256> = vec!();
-    let mut instrs: Vec<Instr> = vec!();
-    // write instructions
-    opt::build_super_instructions(
-        bytecode, pex.valid_jumpdests(), &mut block_infos, &mut imms, &mut instrs,
-    );
+    for (i, imm) in imms.iter().enumerate() {
+        unsafe {
+            let ptr = pex.imms_ptr_mut().offset(i as isize);
+            *ptr = *imm;
+        }
+    }
 
-    // write immediates
-    // for (i, imm) in imms.iter().enumerate() {
-    //     println!("{}: {}", i, imm.0[0]);
-    // }
-
-    // for bi in block_infos {
-    //     println!("{:?}", bi);
-    // }
+    for (i, instr) in instrs.iter().enumerate() {
+        unsafe {
+            let ptr = pex.text_ptr_mut().offset(i as isize);
+            //*ptr = *instr;
+        }
+    }
 
     pex
 }

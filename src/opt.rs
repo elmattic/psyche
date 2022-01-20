@@ -30,19 +30,19 @@ type LiveRange = (isize, isize, u16, bool, i16);
 
 #[derive(Debug, Copy, Clone)]
 pub struct BlockInfo {
+    pub gas: u64,
     pub stack_min_size: u16,
     pub stack_rel_max_size: u16,
     pub start_addr: (u16, u16),
-    pub gas: u64,
 }
 
 impl BlockInfo {
     pub fn default() -> BlockInfo {
         BlockInfo {
+            gas: 0,
             stack_min_size: 0,
             stack_rel_max_size: 0,
             start_addr: (0, 0),
-            gas: 0,
         }
     }
 
@@ -58,10 +58,10 @@ impl BlockInfo {
             0
         };
         BlockInfo {
+            gas,
             stack_min_size,
             stack_rel_max_size,
             start_addr: (start_addr, 0),
-            gas,
         }
     }
 }
