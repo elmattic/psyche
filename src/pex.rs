@@ -42,7 +42,7 @@ impl Pex {
 
     pub fn new() -> Pex {
         let mut bytes = Vec::new();
-        bytes.resize(Self::TEXT_OFFSET, 0);
+        bytes.resize(Self::TEXT_OFFSET+Self::TEXT_SIZE, 0);
         Pex {
             bytes
         }
@@ -105,7 +105,7 @@ impl Pex {
 
 pub fn build(bytecode: &[u8], schedule: &Schedule) -> Pex {
     let mut pex = Pex::new();
-    println!("size: {} bytes", pex.len());
+    println!("pex size: {} bytes", pex.len());
 
     opt::build_valid_jumpdests(bytecode, pex.valid_jumpdests_mut());
 

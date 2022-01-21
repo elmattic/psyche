@@ -464,7 +464,6 @@ impl Opcode {
 pub struct Instr {
     opcode: Opcode,
     operands: Vec<Operand>,
-    sp_offset: i16,
 }
 
 struct InstrWithConsts<'a> {
@@ -484,7 +483,6 @@ impl Instr {
        Instr {
             opcode: Opcode::INVALID,
             operands: vec!(),
-            sp_offset: 0,
         }
     }
 
@@ -517,7 +515,6 @@ impl Instr {
                     return Instr {
                         opcode,
                         operands: vec![Operand::JumpDest { addr: low as u16 }],
-                        sp_offset: 0,
                     }
                 }
             },
@@ -539,7 +536,6 @@ impl Instr {
                             Operand::JumpDest { addr: low as u16 },
                             args[1].to_operand(imms)
                         ],
-                        sp_offset: 0,
                     }
                 }
             },
@@ -556,7 +552,6 @@ impl Instr {
         Instr {
             opcode: Opcode::from(opcode),
             operands: v,
-            sp_offset: 0,
         }
     }
 
@@ -569,7 +564,6 @@ impl Instr {
         Instr {
             opcode: Opcode::SET2,
             operands: v,
-            sp_offset: 0,
         }
     }
 
@@ -597,10 +591,6 @@ impl<'a> fmt::Display for InstrWithConsts<'a> {
                 },
                 _ => panic!("only immediate, address or jumpdest are valid")
             }
-        }
-        let sp_offset = self.instr.sp_offset;
-        if sp_offset != 0 {
-            write!(f, "({:+})", sp_offset);
         }
         res
     }
@@ -1036,16 +1026,6 @@ impl StaticStack {
                 },
                 (None, None) => break,
                 (None, Some(_)) => unreachable!(),
-            }
-        }
-
-        if diff != 0 {
-            // we need to store in last instruction of the block the stack ptr
-            // offset
-            if let Some(instr) = instrs.last_mut() {
-                // check if last instruction has enough bits left, otherwise we
-                // need to push a noop jump instruction for that matter
-                instr.sp_offset = diff as i16;
             }
         }
     }
