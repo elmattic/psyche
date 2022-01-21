@@ -34,6 +34,7 @@ pub struct BlockInfo {
     pub stack_min_size: u16,
     pub stack_rel_max_size: u16,
     pub start_addr: (u16, u16),
+    pub stack_diff: i16,
 }
 
 impl BlockInfo {
@@ -43,6 +44,7 @@ impl BlockInfo {
             stack_min_size: 0,
             stack_rel_max_size: 0,
             start_addr: (0, 0),
+            stack_diff: 0,
         }
     }
 
@@ -62,6 +64,7 @@ impl BlockInfo {
             stack_min_size,
             stack_rel_max_size,
             start_addr: (start_addr, 0),
+            stack_diff: 0,
         }
     }
 }
@@ -658,6 +661,10 @@ impl StaticStack {
         self.size
     }
 
+    fn diff(&self) -> isize {
+        self.len() as isize - self.size() as isize
+    }
+
     fn clear(&mut self, size: usize) {
         self.size = size;
         self.args.clear();
@@ -1239,22 +1246,6 @@ pub fn build_super_instructions(
             bytecode.len() as u16 - block_info.start_addr.0
         } as isize;
 
-        // println!("{:?}", block_info);
-        // println!("block bytes: {}", block_bytes_len);
-
-        // print block opcodes
-        // let mut offset: isize = 0;
-        // while offset < block_bytes_len {
-        //     let opcode = unsafe { *opcodes.offset(block_offset + offset) };
-        //     println!("{:?}", opcode);
-        //     if opcode.is_push() {
-        //         let num_bytes = opcode.push_index() as isize + 1;
-        //         offset += num_bytes;
-        //     }
-        //     offset += 1;
-        // }
-        // println!("");
-
         // build super instructions
         stack.clear(block_info.stack_min_size as usize);
         let block = &bytecode[block_offset as usize..(block_offset + block_len) as usize];
@@ -1264,12 +1255,35 @@ pub fn build_super_instructions(
         stack.alloc_stack_slots(&mut instrs[start_instr..], block_instr_len, &block_info);
         stack.block_fixup(imms, instrs);
 
-        // patch jump addresses
+        // patch jump addresses and stack diff
         let block_info = &mut block_infos[i];
         block_info.start_addr.1 = super_block_offset;
+        block_info.stack_diff = stack.diff() as i16;
         for instr in &instrs[start_instr..] {
             super_block_offset += instr.size() as u16;
         }
+
+        // println!("\n==== block #{} ====", i);
+        // println!("{:?}", block_info);
+
+        // let mut offset: isize = 0;
+        // while offset < block_len {
+        //     let opcode = bytecode[(block_offset + offset) as usize];
+        //     let opcode = unsafe { std::mem::transmute::<u8, EvmOpcode>(opcode) };
+        //     println!("{:?}", opcode);
+        //     if opcode.is_push() {
+        //         let num_bytes = opcode.push_index() as isize + 1;
+        //         offset += num_bytes;
+        //     }
+        //     offset += 1;
+        // }
+
+        // println!("--");
+        // for instr in &instrs[start_instr..] {
+        //     let ic = Instr::with_imms(instr, &imms);
+        //     println!("{}", ic);
+        // }
+        // println!("--");
 
         start_instr = instrs.len();
 
