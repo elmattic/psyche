@@ -132,11 +132,10 @@ pub fn build(bytecode: &[u8], schedule: &Schedule) -> Pex {
         }
     }
 
-    for (i, instr) in instrs.iter().enumerate() {
-        unsafe {
-            let ptr = pex.text_ptr_mut().offset(i as isize);
-            //*ptr = *instr;
-        }
+    let mut ptr: *mut u64 = pex.text_ptr_mut();
+    for instr in &instrs {
+        let len = instr.encode(ptr);
+        ptr = unsafe { ptr.offset(len as isize) };
     }
 
     pex

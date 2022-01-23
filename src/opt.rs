@@ -71,10 +71,10 @@ impl BlockInfo {
 
 #[derive(Debug)]
 enum Operand {
-    Address { offset: i16 },
-    JumpDest { addr: u16 },
+    Address { offset: i16, ret: bool },
+    JumpDest { addr: u32 },
     Immediate { index: u16 },
-    Temporary { id: u16 }
+    Temporary { id: u16, ret: bool }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -514,7 +514,7 @@ impl Instr {
                     };
                     return Instr {
                         opcode,
-                        operands: vec![Operand::JumpDest { addr: low as u16 }],
+                        operands: vec![Operand::JumpDest { addr: low as u32 }],
                     }
                 }
             },
@@ -533,8 +533,8 @@ impl Instr {
                     return Instr {
                         opcode,
                         operands: vec![
-                            Operand::JumpDest { addr: low as u16 },
-                            args[1].to_operand(imms)
+                            Operand::JumpDest { addr: low as u32 },
+                            args[1].to_operand(imms, false)
                         ],
                     }
                 }
@@ -544,10 +544,10 @@ impl Instr {
         //
         let mut v = vec![];
         if let Some(arg) = retarg {
-            v.push(arg.to_operand(imms));
+            v.push(arg.to_operand(imms, true));
         }
         for a in args {
-            v.push((*a).to_operand(imms));
+            v.push((*a).to_operand(imms, false));
         }
         Instr {
             opcode: Opcode::from(opcode),
@@ -557,10 +557,10 @@ impl Instr {
 
     fn set2(dst0: Argument, dst1: Argument, src0: Argument, src1: Argument, imms: &mut Vec<U256>) -> Instr {
         let mut v = vec![];
-        v.push(dst0.to_operand(imms));
-        v.push(dst1.to_operand(imms));
-        v.push(src0.to_operand(imms));
-        v.push(src1.to_operand(imms));
+        v.push(dst0.to_operand(imms, true));
+        v.push(dst1.to_operand(imms, true));
+        v.push(src0.to_operand(imms, false));
+        v.push(src1.to_operand(imms, false));
         Instr {
             opcode: Opcode::SET2,
             operands: v,
@@ -568,7 +568,69 @@ impl Instr {
     }
 
     fn size(&self) -> usize {
-        8
+        self.len() * 8
+    }
+
+    /// len is in multiple of 64-bit words
+    fn len(&self) -> usize {
+        if self.operands.len() <= 4 {
+            1
+        } else {
+            2
+        }
+    }
+
+    pub fn encode(&self, dst: *mut u64) -> usize {
+        let len = self.len();
+        if len == 1 {
+            let mut bits: u64 = 0;
+            let mut i = 0;
+            bits |= self.opcode.to_u8() as u64;
+            i += 8;
+            for opr in &self.operands {
+                match *opr {
+                    Operand::Address { offset, ret } => {
+                        assert!(offset >= -1024 && offset < 1024);
+                        let offset = (offset + 1024) as u16;
+                        let offset = offset & 0x7ff; // clear upper bits
+                        bits |= (offset as u64) << i;
+                        if ret {
+                            // it's an offset to a destination address, stored
+                            // on a u16 but the value range is [-1024, +1023]
+                            // and so can fit 11 bits
+                            i += 11;
+                        } else {
+                            // this need to be 15 bits, because we can store
+                            // immediate as well (1-bit + 14-bit index)
+                            i += 15;
+                        }
+                    },
+                    Operand::Immediate { index } => {
+                        // check that the index addresses 16K entries
+                        assert!(index < 0x4000);
+                        // set bit 14 to indicate for an immediate value
+                        let index = index | 0x4000;
+                        bits |= (index as u64) << i;
+                        i += 15
+                    },
+                    Operand::JumpDest { addr } => {
+                        // check that the address fits on 19-bits
+                        assert!(addr < 0x80000);
+                        bits |= (addr as u64) << i;
+                        i += 19
+                    },
+                    Operand::Temporary { id: _, ret: _ } => {
+                        unreachable!()
+                    },
+                }
+            }
+            unsafe {
+                *dst = bits;
+            }
+        } else {
+            unimplemented!()
+        }
+        len
     }
 }
 
@@ -583,7 +645,7 @@ impl<'a> fmt::Display for InstrWithConsts<'a> {
                     let value = self.consts[*index as usize];
                     write!(f, "${}, ", value.0[0]);
                 },
-                Operand::Address { offset } => {
+                Operand::Address { offset, ret: _ } => {
                     write!(f, "@{:+}, ", offset);
                 },
                 Operand::JumpDest { addr } => {
@@ -613,7 +675,7 @@ struct StaticStack {
 }
 
 impl Argument {
-    fn to_operand(&self, imms: &mut Vec<U256>) -> Operand {
+    fn to_operand(&self, imms: &mut Vec<U256>, ret: bool) -> Operand {
         match *self {
             Argument::Immediate { value } => {
                 // TODO: assert if u16 is too small (should not happen)
@@ -622,10 +684,10 @@ impl Argument {
                 Operand::Immediate { index }
             },
             Argument::Input { id: _, address } => {
-                Operand::Address { offset: address }
+                Operand::Address { offset: address, ret }
             },
             Argument::Temporary { id } => {
-                Operand::Temporary { id }
+                Operand::Temporary { id, ret }
             },
         }
     }
@@ -971,12 +1033,13 @@ impl StaticStack {
         // patch instruction temporaries with their allocated stack slots
         for instr in instrs {
             for opr in &mut instr.operands {
-                match opr {
-                    Operand::Temporary { id } => {
-                        let res = sorted_lifetimes.iter().find(|&tu| tu.2 == *id);
+                match *opr {
+                    Operand::Temporary { id, ret } => {
+                        let res = sorted_lifetimes.iter().find(|&tu| tu.2 == id);
                         let (_,_,_,_,addr) = res.unwrap();
                         *opr = Operand::Address {
-                            offset: *addr
+                            offset: *addr,
+                            ret,
                         };
                     },
                     _ => (),
