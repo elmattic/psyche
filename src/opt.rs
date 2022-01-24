@@ -34,7 +34,6 @@ pub struct BlockInfo {
     pub stack_min_size: u16,
     pub stack_rel_max_size: u16,
     pub start_addr: (u16, u16),
-    pub stack_diff: i16,
 }
 
 impl BlockInfo {
@@ -44,7 +43,6 @@ impl BlockInfo {
             stack_min_size: 0,
             stack_rel_max_size: 0,
             start_addr: (0, 0),
-            stack_diff: 0,
         }
     }
 
@@ -64,7 +62,6 @@ impl BlockInfo {
             stack_min_size,
             stack_rel_max_size,
             start_addr: (start_addr, 0),
-            stack_diff: 0,
         }
     }
 }
@@ -464,6 +461,7 @@ impl Opcode {
 pub struct Instr {
     opcode: Opcode,
     operands: Vec<Operand>,
+    sp_offset: i16,
 }
 
 struct InstrWithConsts<'a> {
@@ -483,6 +481,7 @@ impl Instr {
        Instr {
             opcode: Opcode::INVALID,
             operands: vec!(),
+            sp_offset: 0,
         }
     }
 
@@ -515,6 +514,7 @@ impl Instr {
                     return Instr {
                         opcode,
                         operands: vec![Operand::JumpDest { addr: low as u32 }],
+                        sp_offset: 0,
                     }
                 }
             },
@@ -536,6 +536,7 @@ impl Instr {
                             Operand::JumpDest { addr: low as u32 },
                             args[1].to_operand(imms, false)
                         ],
+                        sp_offset: 0,
                     }
                 }
             },
@@ -552,6 +553,7 @@ impl Instr {
         Instr {
             opcode: Opcode::from(opcode),
             operands: v,
+            sp_offset: 0,
         }
     }
 
@@ -564,6 +566,7 @@ impl Instr {
         Instr {
             opcode: Opcode::SET2,
             operands: v,
+            sp_offset: 0,
         }
     }
 
@@ -653,6 +656,10 @@ impl<'a> fmt::Display for InstrWithConsts<'a> {
                 },
                 _ => panic!("only immediate, address or jumpdest are valid")
             }
+        }
+        let sp_offset = self.instr.sp_offset;
+        if sp_offset != 0 {
+            write!(f, "({:+})", sp_offset);
         }
         res
     }
@@ -1091,6 +1098,14 @@ impl StaticStack {
                 (None, Some(_)) => unreachable!(),
             }
         }
+
+        if diff != 0 {
+            // We need to store in the last instruction of the block the stack
+            // pointer offset
+            if let Some(instr) = instrs.last_mut() {
+                instr.sp_offset = diff as i16;
+            }
+        }
     }
 }
 
@@ -1301,7 +1316,6 @@ pub fn build_super_instructions(
         // patch jump addresses and stack diff
         let block_info = &mut block_infos[i];
         block_info.start_addr.1 = super_block_offset;
-        block_info.stack_diff = stack.diff() as i16;
         for instr in &instrs[start_instr..] {
             super_block_offset += instr.size() as u16;
         }
