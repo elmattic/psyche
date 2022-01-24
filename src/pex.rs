@@ -82,9 +82,16 @@ impl Pex {
     }
 
     pub fn imms_ptr_mut(&mut self) -> *mut U256 {
-        let offset = Self::TEXT_OFFSET as isize;
+        let offset = Self::IMMS_OFFSET as isize;
         unsafe {
             self.bytes.as_mut_ptr().offset(offset) as *mut U256
+        }
+    }
+
+    pub fn imms_ptr(&self) -> *const U256 {
+        let offset = Self::IMMS_OFFSET as isize;
+        unsafe {
+            self.bytes.as_ptr().offset(offset) as *const U256
         }
     }
 
@@ -92,6 +99,13 @@ impl Pex {
         let offset = Self::TEXT_OFFSET as isize;
         unsafe {
             self.bytes.as_mut_ptr().offset(offset) as *mut u64
+        }
+    }
+
+    pub fn text_ptr(&self) -> *const u64 {
+        let offset = Self::TEXT_OFFSET as isize;
+        unsafe {
+            self.bytes.as_ptr().offset(offset) as *const u64
         }
     }
 

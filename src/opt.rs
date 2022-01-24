@@ -78,7 +78,7 @@ enum Operand {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-struct Opcode(pub u8);
+pub struct Opcode(pub u8);
 
 impl Opcode {
     pub const fn to_u8(self) -> u8 {
@@ -609,7 +609,7 @@ impl Instr {
                         // check that the index addresses 16K entries
                         assert!(index < 0x4000);
                         // set bit 14 to indicate for an immediate value
-                        let index = index | 0x4000;
+                        let index = (index + 1024) | 0x4000;
                         bits |= (index as u64) << i;
                         i += 15
                     },

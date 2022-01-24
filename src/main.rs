@@ -38,7 +38,7 @@ use instructions::{EvmInstruction, EvmOpcode};
 use schedule::{Fork, Schedule};
 use u256::U256;
 use utils::{decode_hex, encode_hex, print_config};
-use vm::{run_evm, VmError, VmMemory, VmRom};
+use vm::{run_evm, run_pex_tier1, VmError, VmMemory, VmRom};
 
 const VM_DEFAULT_GAS: u64 = 20_000_000_000_000;
 
@@ -147,12 +147,21 @@ fn disasm(input: &str) {
 
 fn evm(bytecode: &Vec<u8>, fork: Fork, gas_limit: U256) {
     let schedule = Schedule::from_fork(fork);
-    let mut rom = VmRom::new();
-    rom.init(&bytecode, &schedule);
     if true {
         let pex = pex::build(bytecode, &schedule);
-        //opt::build_super_instructions(bytecode, &schedule);
+        let mut memory = VmMemory::new();
+        memory.init(gas_limit);
+        let (err, slice) = unsafe {
+            let ret_data = run_pex_tier1(&pex, &schedule, gas_limit, &mut memory);
+            (
+                ret_data.error,
+                memory.slice(ret_data.offset as isize, ret_data.size),
+            )
+        };
+        println!("{:?}", err);
     }
+    let mut rom = VmRom::new();
+    rom.init(&bytecode, &schedule);
     let mut memory = VmMemory::new();
     memory.init(gas_limit);
     let (err, slice) = unsafe {
