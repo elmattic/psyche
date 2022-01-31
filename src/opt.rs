@@ -183,10 +183,10 @@ impl From<EvmOpcode> for Opcode {
             Opcode::INVALID,//Opcode::JUMPSUB,
             Opcode::INVALID,
             Opcode::MADD,//Opcode::PUSH1,
-            Opcode::SET2,//Opcode::PUSH2,
-            Opcode::JUMPV,//Opcode::PUSH3,
-            Opcode::JUMPIV,//Opcode::PUSH4,
-            Opcode::INVALID,//Opcode::PUSH5,
+            Opcode::SET1,//Opcode::PUSH2,
+            Opcode::SET2,//Opcode::PUSH3,
+            Opcode::JUMPV,//Opcode::PUSH4,
+            Opcode::JUMPIV,//Opcode::PUSH5,
             Opcode::INVALID,//Opcode::PUSH6,
             Opcode::INVALID,//Opcode::PUSH7,
             Opcode::INVALID,//Opcode::PUSH8,
@@ -390,9 +390,10 @@ impl Opcode {
     pub const GAS: Opcode = Opcode(0x5a);
 
     pub const MADD: Opcode = Opcode(0x60); // reuse PUSH1
-    pub const SET2: Opcode = Opcode(0x61); // reuse PUSH2
-    pub const JUMPV: Opcode = Opcode(0x62); // reuse PUSH3
-    pub const JUMPIV: Opcode = Opcode(0x63); // reuse PUSH4
+    pub const SET1: Opcode = Opcode(0x61); // reuse PUSH2
+    pub const SET2: Opcode = Opcode(0x62); // reuse PUSH3
+    pub const JUMPV: Opcode = Opcode(0x63); // reuse PUSH4
+    pub const JUMPIV: Opcode = Opcode(0x64); // reuse PUSH5
 
     pub const RETURN: Opcode = Opcode(0xf3);
 
@@ -444,6 +445,7 @@ impl Opcode {
             Opcode::GAS => "gas",
 
             Opcode::MADD => "madd",
+            Opcode::SET1 => "set1",
             Opcode::SET2 => "set2",
             Opcode::JUMPV => "jumpv",
             Opcode::JUMPIV => "jumpiv",
@@ -453,6 +455,17 @@ impl Opcode {
             Opcode::INVALID => "invalid",
 
             _ => unimplemented!()
+        }
+    }
+
+    /// Remaining bits in the instruction to store sp_offset
+    pub const fn sp_offset_bits(&self) -> usize {
+        match *self {
+            // 8 11 15 15 15
+            Opcode::ADDMOD | Opcode::MULMOD | Opcode::MADD => 0,
+            // 8 11 11 15 15
+            Opcode::SET2 => 4,
+            _ => 11,
         }
     }
 }
@@ -557,6 +570,17 @@ impl Instr {
         }
     }
 
+    fn set1(dst: Argument, src: Argument, imms: &mut Vec<U256>) -> Instr {
+        let mut v = vec![];
+        v.push(dst.to_operand(imms, true));
+        v.push(src.to_operand(imms, false));
+        Instr {
+            opcode: Opcode::SET1,
+            operands: v,
+            sp_offset: 0,
+        }
+    }
+
     fn set2(dst0: Argument, dst1: Argument, src0: Argument, src1: Argument, imms: &mut Vec<U256>) -> Instr {
         let mut v = vec![];
         v.push(dst0.to_operand(imms, true));
@@ -568,10 +592,6 @@ impl Instr {
             operands: v,
             sp_offset: 0,
         }
-    }
-
-    fn size(&self) -> usize {
-        self.len() * 8
     }
 
     /// len is in multiple of 64-bit words
@@ -590,6 +610,12 @@ impl Instr {
             let mut i = 0;
             bits |= self.opcode.to_u8() as u64;
             i += 8;
+            let offset_bits = self.opcode.sp_offset_bits();
+            let base: u64 = 2;
+            let to_add = base.pow(offset_bits as u32 - 1) as i16;
+            bits |= ((self.sp_offset + to_add) as u64) << i;
+            // TODO: assert on sp_offset
+            i += offset_bits;
             for opr in &self.operands {
                 match *opr {
                     Operand::Address { offset, ret } => {
@@ -617,10 +643,11 @@ impl Instr {
                         i += 15
                     },
                     Operand::JumpDest { addr } => {
+                        // TODO: fix this
                         // check that the address fits on 19-bits
-                        assert!(addr < 0x80000);
+                        //assert!(addr < 0x80000);
                         bits |= (addr as u64) << i;
-                        i += 19
+                        i += 16
                     },
                     Operand::Temporary { id: _, ret: _ } => {
                         unreachable!()
@@ -646,10 +673,10 @@ impl<'a> fmt::Display for InstrWithConsts<'a> {
             match opr {
                 Operand::Immediate { index } => {
                     let value = self.consts[*index as usize];
-                    write!(f, "${}, ", value.0[0]);
+                    write!(f, "{}, ", value.0[0]);
                 },
                 Operand::Address { offset, ret: _ } => {
-                    write!(f, "@{:+}, ", offset);
+                    write!(f, "%{:+}, ", offset);
                 },
                 Operand::JumpDest { addr } => {
                     write!(f, "{:02x}h, ", addr);
@@ -1091,7 +1118,7 @@ impl StaticStack {
                     instrs.push(Instr::set2(dst0, dst1, src0, src1, imms));
                 },
                 (Some((dst, src)), None) => {
-                    instrs.push(Instr::set2(dst, dst, src, src, imms));
+                    instrs.push(Instr::set1(dst, src, imms));
                     break;
                 },
                 (None, None) => break,
@@ -1102,9 +1129,20 @@ impl StaticStack {
         if diff != 0 {
             // We need to store in the last instruction of the block the stack
             // pointer offset
-            if let Some(instr) = instrs.last_mut() {
-                instr.sp_offset = diff as i16;
+            let push_set1 = if let Some(instr) = instrs.last_mut() {
+                instr.opcode.sp_offset_bits() < 11
+            } else {
+                true
+            };
+            if push_set1 {
+                instrs.push(Instr::set1(
+                    Argument::Input { id: 0, address: 0},
+                    Argument::Input { id: 0, address: 0},
+                    imms,
+                ));
             }
+            let instr: &mut Instr = instrs.last_mut().unwrap();
+            instr.sp_offset = diff as i16;
         }
     }
 }
@@ -1317,7 +1355,7 @@ pub fn build_super_instructions(
         let block_info = &mut block_infos[i];
         block_info.start_addr.1 = super_block_offset;
         for instr in &instrs[start_instr..] {
-            super_block_offset += instr.size() as u16;
+            super_block_offset += instr.len() as u16;
         }
 
         // println!("\n==== block #{} ====", i);

@@ -390,8 +390,8 @@ impl VmReturnStack {
 }
 
 pub struct VmMemory {
-    mmap: Option<memmap::MmapMut>,
-    ptr: *mut u8,
+    pub mmap: Option<memmap::MmapMut>,
+    pub ptr: *mut u8,
     pub len: usize,
 }
 
@@ -469,13 +469,13 @@ impl VmMemory {
         self.len * std::mem::size_of::<U256>()
     }
 
-    unsafe fn read(&mut self, offset: usize) -> U256 {
+    unsafe fn read(&mut self, offset: u64) -> U256 {
         let src = self.ptr.offset(offset as isize);
         let result = bswap_u256(loadu_u256(src as *const U256, 0));
         return result;
     }
 
-    unsafe fn write(&mut self, offset: usize, value: U256) {
+    unsafe fn write(&mut self, offset: u64, value: U256) {
         let dest = self.ptr.offset(offset as isize);
         storeu_u256(dest as *mut U256, bswap_u256(value), 0);
     }
@@ -557,7 +557,12 @@ macro_rules! extend_memory {
                 let (temp, overflow) = $offset.low_u64().overflowing_add($size + 31);
                 (temp / 32, overflow)
             };
-            meter_extend!(new_len, overflow, $schedule, $memory, $gas, $error);
+            //meter_extend!(new_len, overflow, $schedule, $memory, $gas, $error);
+
+            let len = $memory.len as u64;
+            if new_len > len {
+                $memory.len = new_len as usize;
+            }
         } else {
             $error = VmError::OutOfGas;
             break;
@@ -575,7 +580,12 @@ macro_rules! extend_memory {
             } else {
                 new_len
             };
-            meter_extend!(new_len, overflow, $schedule, $memory, $gas, $error);
+            //meter_extend!(new_len, overflow, $schedule, $memory, $gas, $error);
+
+            let len = $memory.len as u64;
+            if new_len > len {
+                $memory.len = new_len as usize;
+            }
         } else {
             $error = VmError::OutOfGas;
             break;
@@ -616,14 +626,14 @@ macro_rules! meter_sha3 {
 
 #[derive(Debug)]
 pub struct ReturnData {
-    pub offset: usize,
-    pub size: usize,
+    pub offset: u64,
+    pub size: u64,
     pub gas: u64,
     pub error: VmError,
 }
 
 impl ReturnData {
-    pub fn new(offset: usize, size: usize, gas: u64, error: VmError) -> Self {
+    pub fn new(offset: u64, size: u64, gas: u64, error: VmError) -> Self {
         ReturnData {
             offset,
             size,
@@ -632,7 +642,7 @@ impl ReturnData {
         }
     }
 
-    pub fn ok(offset: usize, size: usize, gas: u64) -> Self {
+    pub fn ok(offset: u64, size: u64, gas: u64) -> Self {
         ReturnData {
             offset,
             size,
@@ -974,7 +984,7 @@ pub unsafe fn run_evm(
                 comment!("opMLOAD");
                 let offset = stack.pop_u256();
                 extend_memory!(offset, 32, schedule, memory, gas, error);
-                let result = memory.read(offset.low_u64() as usize);
+                let result = memory.read(offset.low_u64());
                 stack.push(result);
                 //
                 pc += 1;
@@ -984,7 +994,7 @@ pub unsafe fn run_evm(
                 let offset = stack.pop_u256();
                 let value = stack.pop();
                 extend_memory!(offset, 32, schedule, memory, gas, error);
-                memory.write(offset.low_u64() as usize, value);
+                memory.write(offset.low_u64(), value);
                 //
                 pc += 1;
             }
@@ -1253,7 +1263,7 @@ pub unsafe fn run_evm(
                 let offset = stack.pop_u256();
                 let size = stack.pop_u256();
                 extend_memory!(offset, size, schedule, memory, gas, error);
-                return ReturnData::ok(offset.low_u64() as usize, size.low_u64() as usize, gas);
+                return ReturnData::ok(offset.low_u64(), size.low_u64(), gas);
             }
             Opcode::DELEGATECALL | Opcode::CREATE2 | Opcode::STATICCALL | Opcode::REVERT => {
                 unimplemented!()
@@ -1627,22 +1637,42 @@ impl VmRom {
     }
 }
 
-macro_rules! decode_ddss {
+// TODO: more macros
+
+macro_rules! decode_ds {
     ($instr:expr, $sp:ident, $imms:ident) => {
         {
-            let bdst0: i16 = ((($instr >> (8)         ) & 0b00000111_11111111) as u16) as i16 - 1024;
-            let bdst1: i16 = ((($instr >> (8+11)      ) & 0b00000111_11111111) as u16) as i16 - 1024;
-            let bsrc0: i16 = ((($instr >> (8+11+11)   ) & 0b00111111_11111111) as u16) as i16 - 1024;
-            let bsrc1: i16 = ((($instr >> (8+11+11+15)) & 0b00111111_11111111) as u16) as i16 - 1024;
+            let bspo: i16   = ((($instr >> (8)      ) & 0b00000111_11111111) as u16) as i16 - 1024;
+            let bdst: i16   = ((($instr >> (8+11)   ) & 0b00000111_11111111) as u16) as i16 - 1024;
+            let bsrc: i16   = ((($instr >> (8+11+11)) & 0b00111111_11111111) as u16) as i16 - 1024;
+            let mask: usize = (0 - (($instr >> (8+11+11+14)) & 0x1) as isize) as usize;
 
-            let mask0: usize = (0 - (($instr >> (8+11+11+14   )) & 0x1) as isize) as usize;
-            let mask1: usize = (0 - (($instr >> (8+11+11+15+14)) & 0x1) as isize) as usize;
+            let src =  (($sp as usize & !mask) | ($imms as usize & mask)) as *const U256;
+
+            let dst_ptr = $sp.offset(bdst as isize);
+            $sp = $sp.offset(bspo as isize);
+            (
+                dst_ptr,
+                src.offset(bsrc as isize),
+            )
+        }
+    }
+}
+
+macro_rules! decode_ss {
+    ($instr:expr, $sp:ident, $imms:ident) => {
+        {
+            let bspo: i16    = ((($instr >> (8)      ) & 0b00000111_11111111) as u16) as i16 - 1024;
+            let bsrc0: i16   = ((($instr >> (8+11)   ) & 0b00111111_11111111) as u16) as i16 - 1024;
+            let bsrc1: i16   = ((($instr >> (8+11+15)) & 0b00111111_11111111) as u16) as i16 - 1024;
+            let mask0: usize = (0 - (($instr >> (8+11+14))    & 0x1) as isize) as usize;
+            let mask1: usize = (0 - (($instr >> (8+11+15+14)) & 0x1) as isize) as usize;
+
             let src0 = (($sp as usize & !mask0) | ($imms as usize & mask0)) as *const U256;
             let src1 = (($sp as usize & !mask1) | ($imms as usize & mask1)) as *const U256;
 
+            $sp = $sp.offset(bspo as isize);
             (
-                $sp.offset(bdst0 as isize),
-                $sp.offset(bdst1 as isize),
                 src0.offset(bsrc0 as isize),
                 src1.offset(bsrc1 as isize),
             )
@@ -1653,19 +1683,68 @@ macro_rules! decode_ddss {
 macro_rules! decode_dss {
     ($instr:expr, $sp:ident, $imms:ident) => {
         {
-            let bdst0: i16 = ((($instr >> (8)      ) & 0b00000111_11111111) as u16) as i16 - 1024;
-            let bsrc0: i16 = ((($instr >> (8+11)   ) & 0b00111111_11111111) as u16) as i16 - 1024;
-            let bsrc1: i16 = ((($instr >> (8+11+15)) & 0b00111111_11111111) as u16) as i16 - 1024;
+            let bspo: i16    = ((($instr >> (8)      )    & 0b00000111_11111111) as u16) as i16 - 1024;
+            let bdst: i16    = ((($instr >> (8+11)   )    & 0b00000111_11111111) as u16) as i16 - 1024;
+            let bsrc0: i16   = ((($instr >> (8+11+11))    & 0b00111111_11111111) as u16) as i16 - 1024;
+            let bsrc1: i16   = ((($instr >> (8+11+11+15)) & 0b00111111_11111111) as u16) as i16 - 1024;
+            let mask0: usize = (0 - (($instr >> (8+11+11+14))    & 0x1) as isize) as usize;
+            let mask1: usize = (0 - (($instr >> (8+11+11+15+14)) & 0x1) as isize) as usize;
 
-            let mask0: usize = (0 - (($instr >> (8+11+14   )) & 0x1) as isize) as usize;
-            let mask1: usize = (0 - (($instr >> (8+11+15+14)) & 0x1) as isize) as usize;
             let src0 = (($sp as usize & !mask0) | ($imms as usize & mask0)) as *const U256;
             let src1 = (($sp as usize & !mask1) | ($imms as usize & mask1)) as *const U256;
 
+            let dst_ptr = $sp.offset(bdst as isize);
+            $sp = $sp.offset(bspo as isize);
             (
-                $sp.offset(bdst0 as isize),
+                dst_ptr,
                 src0.offset(bsrc0 as isize),
                 src1.offset(bsrc1 as isize),
+            )
+        }
+    }
+}
+
+macro_rules! decode_ddss {
+    ($instr:expr, $sp:ident, $imms:ident) => {
+        {
+            let bspo: i16    = ((($instr >> (8)      )      & 0b00000000_00001111) as u16) as i16 - 8;
+            let bdst0: i16   = ((($instr >> (8+4)    )      & 0b00000111_11111111) as u16) as i16 - 1024;
+            let bdst1: i16   = ((($instr >> (8+4+11) )      & 0b00000111_11111111) as u16) as i16 - 1024;
+            let bsrc0: i16   = ((($instr >> (8+4+11+11))    & 0b00111111_11111111) as u16) as i16 - 1024;
+            let bsrc1: i16   = ((($instr >> (8+4+11+11+15)) & 0b00111111_11111111) as u16) as i16 - 1024;
+            let mask0: usize = (0 - (($instr >> (8+4+11+11+14))    & 0x1) as isize) as usize;
+            let mask1: usize = (0 - (($instr >> (8+4+11+11+15+14)) & 0x1) as isize) as usize;
+
+            let src0 = (($sp as usize & !mask0) | ($imms as usize & mask0)) as *const U256;
+            let src1 = (($sp as usize & !mask1) | ($imms as usize & mask1)) as *const U256;
+
+            let dst0_ptr = $sp.offset(bdst0 as isize);
+            let dst1_ptr = $sp.offset(bdst1 as isize);
+            $sp = $sp.offset(bspo as isize);
+            (
+                dst0_ptr,
+                dst1_ptr,
+                src0.offset(bsrc0 as isize),
+                src1.offset(bsrc1 as isize),
+            )
+        }
+    }
+}
+
+macro_rules! decode_ts {
+    ($instr:expr, $sp:ident, $imms:ident) => {
+        {
+            let bspo: i16   = ((($instr >> (8)      ) & 0b00000111_11111111) as u16) as i16 - 1024;
+            let btgt: u16   = ((($instr >> (8+11)   ) & 0xffff) as u16);
+            let bsrc: i16   = ((($instr >> (8+11+16)) & 0b00111111_11111111) as u16) as i16 - 1024;
+            let mask: usize = (0 - (($instr >> (8+11+16+14)) & 0x1) as isize) as usize;
+
+            let src = (($sp as usize & !mask) | ($imms as usize & mask)) as *const U256;
+
+            $sp = $sp.offset(bspo as isize);
+            (
+                btgt,
+                src.offset(bsrc as isize),
             )
         }
     }
@@ -1676,22 +1755,30 @@ macro_rules! decode_dss {
 // println!(":{:016x} {:016x} {:016x} {:016x}", temp0.0[3], temp0.0[2], temp0.0[1], temp0.0[0]);
 // println!(":{:016x} {:016x} {:016x} {:016x}", temp1.0[3], temp1.0[2], temp1.0[1], temp1.0[0]);
 
+pub struct RunResult {
+    pub offset: u64,
+    pub size: u64,
+    pub gas: u64,
+    pub error: VmError,
+}
+
 pub unsafe fn run_pex_tier1(
     pex: &Pex,
     schedule: &Schedule,
     gas_limit: U256,
     memory: &mut VmMemory,
-) -> ReturnData {
+) -> RunResult {
     use crate::opt::Opcode;
 
-    let mut slots: VmStackSlots = MaybeUninit::uninit().assume_init();
-    let mut stack: VmStack = VmStack::new(&mut slots);
-    let mut sp: *mut U256 = stack.sp;
+    let mut stack = vec!(U256::default(); 1024);
+    let mut sp: *mut U256 = stack.as_mut_ptr();
     let imms: *const U256 = pex.imms_ptr();
     let instrs: *const u64 = pex.text_ptr();
+    let blocks: *const BlockInfo = pex.block_infos_ptr();
     let mut pc: usize = 0;
     let mut gas: u64 = gas_limit.low_u64();
     let mut error: VmError = VmError::None;
+    let mut ret_slice = (0, 0);
     let mut entered: bool = false;
 
     // println!("sp:   0x{:#016x}", sp as usize);
@@ -1705,12 +1792,13 @@ pub unsafe fn run_pex_tier1(
     loop {
         let instr = *instrs.offset(pc as isize);
         let opcode: Opcode = Opcode { 0: (instr & 0xff) as u8 };
-        println!(">> {}", opcode.mnemonic());
+        //println!(">> {}", opcode.mnemonic());
         match opcode {
             Opcode::STOP => {
                 break;
             },
             Opcode::ADD => {
+                comment!("opADD");
                 let (dst, src0, src1) = decode_dss!(instr, sp, imms);
                 let a = load_u256(src0, 0);
                 let b = load_u256(src1, 0);
@@ -1718,7 +1806,17 @@ pub unsafe fn run_pex_tier1(
                 store_u256(dst, result, 0);
                 pc += 1;
             },
+            Opcode::SUB => {
+                comment!("opSUB");
+                let (dst, src0, src1) = decode_dss!(instr, sp, imms);
+                let a = load_u256(src0, 0);
+                let b = load_u256(src1, 0);
+                let result = sub_u256(a, b);
+                store_u256(dst, result, 0);
+                pc += 1;
+            },
             Opcode::MUL => {
+                comment!("opMUL");
                 let (dst, src0, src1) = decode_dss!(instr, sp, imms);
                 let a = load_u256(src0, 0);
                 let b = load_u256(src1, 0);
@@ -1755,7 +1853,13 @@ pub unsafe fn run_pex_tier1(
                 unimplemented!()
             },
             Opcode::GT => {
-                unimplemented!()
+                comment!("opGT");
+                let (dst, src0, src1) = decode_dss!(instr, sp, imms);
+                let a = load_u256(src0, 0);
+                let b = load_u256(src1, 0);
+                let result = U256::from_u64(gt_u256(a, b) as u64);
+                store_u256(dst, result, 0);
+                pc += 1;
             },
             Opcode::SLT => {
                 unimplemented!()
@@ -1764,6 +1868,7 @@ pub unsafe fn run_pex_tier1(
                 unimplemented!()
             },
             Opcode::EQ => {
+                comment!("opEQ");
                 let (dst, src0, src1) = decode_dss!(instr, sp, imms);
                 let a = load_u256(src0, 0);
                 let b = load_u256(src1, 0);
@@ -1772,7 +1877,12 @@ pub unsafe fn run_pex_tier1(
                 pc += 1;
             },
             Opcode::ISZERO => {
-                unimplemented!()
+                comment!("opISZERO");
+                let (dst, src) = decode_ds!(instr, sp, imms);
+                let a = load_u256(src, 0);
+                let result = iszero_u256(a);
+                store_u256(dst, result, 0);
+                pc += 1;
             },
             Opcode::AND => {
                 unimplemented!()
@@ -1804,10 +1914,22 @@ pub unsafe fn run_pex_tier1(
             },
 
             Opcode::MLOAD => {
-                unimplemented!()
+                comment!("opMLOAD");
+                let (dst, src) = decode_ds!(instr, sp, imms);
+                let offset = load_u256(src, 0);
+                extend_memory!(offset, 32, schedule, memory, gas, error);
+                let result = memory.read(offset.low_u64());
+                store_u256(dst, result, 0);
+                pc += 1;
             },
             Opcode::MSTORE => {
-                unimplemented!()
+                comment!("opMSTORE");
+                let (src0, src1) = decode_ss!(instr, sp, imms);
+                let offset = load_u256(src0, 0);
+                let value = load_u256(src1, 0);
+                extend_memory!(offset, 32, schedule, memory, gas, error);
+                memory.write(offset.low_u64(), value);
+                pc += 1;
             },
             Opcode::MSTORE8 => {
                 unimplemented!()
@@ -1825,13 +1947,26 @@ pub unsafe fn run_pex_tier1(
                 unimplemented!()
             }
             Opcode::MSIZE => {
-                unimplemented!()
+                let (dst, _) = decode_ds!(instr, sp, imms);
+                let result = U256::from_u64(memory.size() as u64);
+                store_u256(dst, result, 0);
+                pc += 1;
             },
             Opcode::GAS => {
-                unimplemented!()
+                let (dst, _) = decode_ds!(instr, sp, imms);
+                let result = U256::default();
+                store_u256(dst, result, 0);
+                pc += 1;
             },
-
+            Opcode::SET1 => {
+                comment!("opSET1");
+                let (dst, src) = decode_ds!(instr, sp, imms);
+                let result = load_u256(src, 0);
+                store_u256(dst, result, 0);
+                pc += 1;
+            },
             Opcode::SET2 => {
+                comment!("opSET2");
                 let (dst0, dst1, src0, src1) = decode_ddss!(instr, sp, imms);
                 let a = load_u256(src0, 0);
                 let b = load_u256(src1, 0);
@@ -1840,20 +1975,44 @@ pub unsafe fn run_pex_tier1(
                 pc += 1;
             },
             Opcode::JUMPV => {
-                unimplemented!()
+                comment!("opJUMPV");
+                let (tgt, _) = decode_ts!(instr, sp, imms);
+                let block = *blocks.offset(tgt as isize);
+                pc = block.start_addr.1 as usize;
             }
             Opcode::JUMPIV => {
-                unimplemented!()
+                comment!("opJUMPIV");
+                let (tgt, src) = decode_ts!(instr, sp, imms);
+                let a = load_u256(src, 0);
+                if is_zero_u256(a) {
+                    pc += 1;
+                } else {
+                    let block = *blocks.offset(tgt as isize);
+                    pc = block.start_addr.1 as usize;
+                }
             }
-
             Opcode::RETURN => {
-                unimplemented!()
+                comment!("opRETURN");
+                let (src0, src1) = decode_ss!(instr, sp, imms);
+                let offset = load_u256(src0, 0);
+                let size = load_u256(src1, 0);
+                extend_memory!(offset, size, schedule, memory, gas, error);
+                ret_slice = (offset.low_u64(), size.low_u64());
+                break;
             },
             Opcode::INVALID => {
-                unimplemented!()
+                comment!("opINVALID");
+                error = VmError::InvalidInstruction;
+                break;
             },
-            _ => (),
+            _ => break,
         }
     }
-    return ReturnData::new(0, 0, gas, error);
+
+    return RunResult {
+        offset: ret_slice.0,
+        size: ret_slice.1,
+        gas,
+        error,
+    };
 }

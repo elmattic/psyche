@@ -74,10 +74,17 @@ impl Pex {
         }
     }
 
-    pub fn block_infos_ptr(&mut self) -> *mut BlockInfo {
+    pub fn block_infos_ptr_mut(&mut self) -> *mut BlockInfo {
         let offset = Self::BLOCK_INFOS_OFFSET as isize;
         unsafe {
             self.bytes.as_mut_ptr().offset(offset) as *mut BlockInfo
+        }
+    }
+
+    pub fn block_infos_ptr(&self) -> *const BlockInfo {
+        let offset = Self::BLOCK_INFOS_OFFSET as isize;
+        unsafe {
+            self.bytes.as_ptr().offset(offset) as *mut BlockInfo
         }
     }
 
@@ -132,9 +139,10 @@ pub fn build(bytecode: &[u8], schedule: &Schedule) -> Pex {
         bytecode, pex.valid_jumpdests(), &mut block_infos, &mut imms, &mut instrs,
     );
 
-    for (i, bi) in block_infos.iter().enumerate() {
+    for bi in block_infos.iter() {
         unsafe {
-            let ptr = pex.block_infos_ptr().offset(i as isize);
+            let addr = bi.start_addr.0;
+            let ptr = pex.block_infos_ptr_mut().offset(addr as isize);
             *ptr = *bi;
         }
     }

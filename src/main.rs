@@ -151,35 +151,37 @@ fn evm(bytecode: &Vec<u8>, fork: Fork, gas_limit: U256) {
         let pex = pex::build(bytecode, &schedule);
         let mut memory = VmMemory::new();
         memory.init(gas_limit);
-        let (err, slice) = unsafe {
-            let ret_data = run_pex_tier1(&pex, &schedule, gas_limit, &mut memory);
-            (
-                ret_data.error,
-                memory.slice(ret_data.offset as isize, ret_data.size),
-            )
-        };
-        println!("{:?}", err);
+        let ret_data = unsafe { run_pex_tier1(&pex, &schedule, gas_limit, &mut memory) };
+        if ret_data.error == VmError::None {
+            let mut buffer = String::with_capacity(512);
+            for i in 0..32 {
+                let byte = unsafe { *memory.ptr.offset(i) };
+                let _ = write!(buffer, "{:02x}", byte);
+            }
+            println!("0x{:}", buffer);
+        }
+        println!("{:?}", ret_data.error);
     }
-    let mut rom = VmRom::new();
-    rom.init(&bytecode, &schedule);
-    let mut memory = VmMemory::new();
-    memory.init(gas_limit);
-    let (err, slice) = unsafe {
-        let ret_data = run_evm(&bytecode, &rom, &schedule, gas_limit, &mut memory);
-        (
-            ret_data.error,
-            memory.slice(ret_data.offset as isize, ret_data.size),
-        )
-    };
-    if err != VmError::None {
-        println!("{:?}", err);
-        return;
-    }
-    let mut buffer = String::with_capacity(512);
-    for byte in slice {
-        let _ = write!(buffer, "{:02x}", byte);
-    }
-    println!("0x{:}", buffer);
+    // let mut rom = VmRom::new();
+    // rom.init(&bytecode, &schedule);
+    // let mut memory = VmMemory::new();
+    // memory.init(gas_limit);
+    // let (err, slice) = unsafe {
+    //     let ret_data = run_evm(&bytecode, &rom, &schedule, gas_limit, &mut memory);
+    //     (
+    //         ret_data.error,
+    //         memory.slice(ret_data.offset as isize, ret_data.size as usize),
+    //     )
+    // };
+    // if err != VmError::None {
+    //     println!("{:?}", err);
+    //     return;
+    // }
+    // let mut buffer = String::with_capacity(512);
+    // for byte in slice {
+    //     let _ = write!(buffer, "{:02x}", byte);
+    // }
+    // println!("0x{:}", buffer);
 }
 
 fn asm(filename: &str) {
