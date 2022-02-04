@@ -1278,29 +1278,14 @@ pub unsafe fn run_evm(
     return ReturnData::new(0, 0, gas, error);
 }
 
-#[derive(Debug, Copy, Clone)]
-pub struct BbInfo {
-    pub stack_min_size: u16,
-    pub stack_rel_max_size: u16,
-    pub start_addr: (u16, u16),
-    pub gas: u64,
+#[derive(Debug)]
+struct BbInfo {
+    stack_min_size: u16,
+    stack_rel_max_size: u16,
+    gas: u64,
 }
 impl BbInfo {
-    pub fn default() -> BbInfo {
-        BbInfo {
-            stack_min_size: 0,
-            stack_rel_max_size: 0,
-            start_addr: (0, 0),
-            gas: 0,
-        }
-    }
-
-    fn new(
-        stack_min_size: u16,
-        stack_max_size: u16,
-        gas: u64,
-        start_addr: u16,
-    ) -> BbInfo {
+    fn new(stack_min_size: u16, stack_max_size: u16, gas: u64) -> BbInfo {
         let stack_rel_max_size = if stack_max_size > stack_min_size {
             stack_max_size - stack_min_size
         } else {
@@ -1308,8 +1293,7 @@ impl BbInfo {
         };
         BbInfo {
             stack_min_size,
-            stack_rel_max_size,
-            start_addr: (start_addr, 0),
+            stack_rel_max_size: stack_rel_max_size,
             gas,
         }
     }
@@ -1320,28 +1304,14 @@ pub struct VmRom {
 }
 
 impl VmRom {
-    /// EIP-170 states a max contract code size of 2**14 + 2**13, we round it
+/// EIP-170 states a max contract code size of 2**14 + 2**13, we round it
     /// to the next power of two.
-    pub const MAX_CODESIZE: usize = 32768;
+    const MAX_CODESIZE: usize = 32768;
     const INVALID_DESTS_SIZE: usize = Self::MAX_CODESIZE / 8;
-    // TODO: rename in SPARSE_BLOCK_INFOS_*
     const BB_INFOS_SIZE: usize = Self::MAX_CODESIZE * std::mem::size_of::<BbInfo>();
-    const BLOCK_INFOS_LEN_SIZE: usize = 4;
-    const BLOCK_INFOS_SIZE: usize = Self::MAX_CODESIZE * std::mem::size_of::<BbInfo>();
-    const SIZE: usize =
-        Self::MAX_CODESIZE
-        + Self::INVALID_DESTS_SIZE
-        + Self::BB_INFOS_SIZE
-        + Self::BLOCK_INFOS_LEN_SIZE
-        + Self::BLOCK_INFOS_SIZE;
-    const INVALID_DESTS_OFFSET: usize =
-        Self::MAX_CODESIZE;
-    const BB_INFOS_OFFSET: usize =
-        Self::MAX_CODESIZE + Self::INVALID_DESTS_SIZE;
-    const BLOCK_INFOS_LEN_OFFSET: usize =
-        Self::MAX_CODESIZE + Self::INVALID_DESTS_SIZE + Self::BB_INFOS_SIZE;
-    const BLOCK_INFOS_OFFSET: usize =
-        Self::MAX_CODESIZE + Self::INVALID_DESTS_SIZE + Self::BB_INFOS_SIZE + Self::BLOCK_INFOS_LEN_SIZE;
+    const SIZE: usize = Self::MAX_CODESIZE + Self::INVALID_DESTS_SIZE + Self::BB_INFOS_SIZE;
+    const INVALID_DESTS_OFFSET: usize = Self::MAX_CODESIZE;
+    const BB_INFOS_OFFSET: usize = Self::MAX_CODESIZE + Self::INVALID_DESTS_SIZE;
 
     pub fn new() -> VmRom {
         VmRom {
@@ -1351,14 +1321,6 @@ impl VmRom {
 
     fn code(&self) -> *const u8 {
         self.data.as_ptr()
-    }
-
-    pub fn block_infos_len(&self) -> u32 {
-        unsafe {
-            let ptr = self.data.as_ptr().offset(Self::BLOCK_INFOS_LEN_OFFSET as isize);
-            let ptr = std::mem::transmute::<*const u8, *const u32>(ptr);
-            *ptr
-        }
     }
 
     fn is_valid_dest(&self, addr: isize) -> bool {
@@ -1372,7 +1334,7 @@ impl VmRom {
         (mask & bit) == 0
     }
 
-    pub fn is_jumpdest(&self, addr: u64) -> bool {
+    fn is_jumpdest(&self, addr: u64) -> bool {
         let addr = (addr as isize) % (Self::MAX_CODESIZE as isize);
         let code = unsafe { *self.code().offset(addr) };
         let opcode = unsafe { std::mem::transmute::<u8, Opcode>(code) };
@@ -1386,27 +1348,11 @@ impl VmRom {
         (opcode == Opcode::BEGINSUB) & self.is_valid_dest(addr)
     }
 
-    pub fn get_bb_info(&self, addr: u64) -> &BlockInfo {
+    fn get_bb_info(&self, addr: u64) -> &BbInfo {
         unsafe {
             let offset = VmRom::BB_INFOS_OFFSET as isize;
-            let bb_infos = self.data.as_ptr().offset(offset) as *mut BlockInfo;
+            let bb_infos = self.data.as_ptr().offset(offset) as *mut BbInfo;
             &*bb_infos.offset(addr as isize)
-        }
-    }
-
-    pub fn get_bb_info_mut(&mut self, addr: u64) -> &mut BlockInfo {
-        unsafe {
-            let offset = VmRom::BB_INFOS_OFFSET as isize;
-            let bb_infos = self.data.as_mut_ptr().offset(offset) as *mut BlockInfo;
-            &mut *bb_infos.offset(addr as isize)
-        }
-    }
-
-    pub fn get_block_info(&self, idx: u32) -> &BlockInfo {
-        unsafe {
-            let offset = VmRom::BLOCK_INFOS_OFFSET as isize;
-            let block_infos_ptr = self.data.as_ptr().offset(offset) as *mut BlockInfo;
-            &*block_infos_ptr.offset(idx as isize)
         }
     }
 
@@ -1530,11 +1476,6 @@ impl VmRom {
             let offset = VmRom::BB_INFOS_OFFSET as isize;
             self.data.as_ptr().offset(offset) as *mut BbInfo
         };
-        let block_infos_ptr = unsafe {
-            let offset = VmRom::BLOCK_INFOS_OFFSET as isize;
-            self.data.as_ptr().offset(offset) as *mut BbInfo
-        };
-        let mut idx = block_infos.len() as isize -1;
         for info in block_infos.iter().rev() {
             if info.is_basic_block {
                 stack_min_size = info.stack_min_size;
@@ -1555,21 +1496,9 @@ impl VmRom {
                 gas += info.gas;
             }
             unsafe {
-                let start_addr = info.addr as u16;
-                let bb_info =
-                    BbInfo::new(stack_min_size, stack_max_size, gas, start_addr);
+                let bb_info = BbInfo::new(stack_min_size, stack_max_size, gas);
                 *bb_infos.offset(info.addr as isize) = bb_info;
-
-                // write compact block infos
-                *block_infos_ptr.offset(idx) = bb_info;
-                idx -= 1;
             }
-        }
-        // write number of blocks previously written
-        unsafe {
-            let ptr = self.data.as_mut_ptr().offset(Self::BLOCK_INFOS_LEN_OFFSET as isize);
-            let ptr = std::mem::transmute::<*mut u8, *mut u32>(ptr);
-            *ptr = block_infos.len() as u32;
         }
     }
 
