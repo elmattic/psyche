@@ -153,14 +153,17 @@ fn evm(bytecode: &Vec<u8>, fork: Fork, gas_limit: U256) {
         memory.init(gas_limit);
         let ret_data = unsafe { run_pex_tier1(&pex, &schedule, gas_limit, &mut memory) };
         if ret_data.error == VmError::None {
-            let mut buffer = String::with_capacity(512);
-            for i in 0..32 {
-                let byte = unsafe { *memory.ptr.offset(i) };
-                let _ = write!(buffer, "{:02x}", byte);
-            }
-            println!("0x{:}", buffer);
+            //for n in 0..100 {
+                let mut buffer = String::with_capacity(512);
+                for i in 0..32 {
+                    let byte = unsafe { *memory.ptr.offset(i+0*32) };
+                    let _ = write!(buffer, "{:02x}", byte);
+                }
+                println!("0x{:}", buffer);
+            //}
         }
         println!("{:?}", ret_data.error);
+        println!("gas: {}", ret_data.gas);
     }
     // let mut rom = VmRom::new();
     // rom.init(&bytecode, &schedule);

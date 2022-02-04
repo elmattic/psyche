@@ -34,6 +34,7 @@ pub struct BlockInfo {
     pub stack_min_size: u16,
     pub stack_rel_max_size: u16,
     pub start_addr: (u16, u16),
+    pub fall_addr: u16,
 }
 
 impl BlockInfo {
@@ -43,6 +44,7 @@ impl BlockInfo {
             stack_min_size: 0,
             stack_rel_max_size: 0,
             start_addr: (0, 0),
+            fall_addr: 0,
         }
     }
 
@@ -51,6 +53,7 @@ impl BlockInfo {
         stack_max_size: u16,
         gas: u64,
         start_addr: u16,
+        fall_addr: u16,
     ) -> BlockInfo {
         let stack_rel_max_size = if stack_max_size > stack_min_size {
             stack_max_size - stack_min_size
@@ -62,6 +65,7 @@ impl BlockInfo {
             stack_min_size,
             stack_rel_max_size,
             start_addr: (start_addr, 0),
+            fall_addr,
         }
     }
 }
@@ -1291,11 +1295,15 @@ pub fn build_block_infos(
     // backward pass, write fwd blocks to block infos
     block_infos.resize(fwd_blocks.len(), BlockInfo::default());
     let mut i: isize = fwd_blocks.len() as isize - 1;
+    let mut fall_addr = 0;
+    let mut fall_addr_last = 0;
     for info in fwd_blocks.iter().rev() {
         if info.is_basic_block {
             stack_min_size = info.stack_min_size;
             stack_max_size = info.stack_max_size;
             gas = info.gas;
+            fall_addr = fall_addr_last;
+            fall_addr_last = info.addr as u16;
         } else {
             let (more, needed) = if stack_min_size > info.stack_end_size {
                 (0, (stack_min_size - info.stack_end_size))
@@ -1314,7 +1322,7 @@ pub fn build_block_infos(
         // write result
         let start_addr = info.addr as u16;
         let block_info =
-            BlockInfo::new(stack_min_size, stack_max_size, gas, start_addr);
+            BlockInfo::new(stack_min_size, stack_max_size, gas, start_addr, fall_addr);
         block_infos[i as usize] = block_info;
         i -= 1;
     }

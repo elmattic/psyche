@@ -557,12 +557,7 @@ macro_rules! extend_memory {
                 let (temp, overflow) = $offset.low_u64().overflowing_add($size + 31);
                 (temp / 32, overflow)
             };
-            //meter_extend!(new_len, overflow, $schedule, $memory, $gas, $error);
-
-            let len = $memory.len as u64;
-            if new_len > len {
-                $memory.len = new_len as usize;
-            }
+            meter_extend!(new_len, overflow, $schedule, $memory, $gas, $error);
         } else {
             $error = VmError::OutOfGas;
             break;
@@ -580,12 +575,7 @@ macro_rules! extend_memory {
             } else {
                 new_len
             };
-            //meter_extend!(new_len, overflow, $schedule, $memory, $gas, $error);
-
-            let len = $memory.len as u64;
-            if new_len > len {
-                $memory.len = new_len as usize;
-            }
+            meter_extend!(new_len, overflow, $schedule, $memory, $gas, $error);
         } else {
             $error = VmError::OutOfGas;
             break;
@@ -1684,6 +1674,20 @@ macro_rules! decode_ts {
 // println!(":{:016x} {:016x} {:016x} {:016x}", temp0.0[3], temp0.0[2], temp0.0[1], temp0.0[0]);
 // println!(":{:016x} {:016x} {:016x} {:016x}", temp1.0[3], temp1.0[2], temp1.0[1], temp1.0[0]);
 
+macro_rules! meter_gas_at {
+    ($tgt:expr, $gas:ident, $blocks:ident, $error:ident) => {
+        let block = *$blocks.offset($tgt as isize);
+        let (newgas, oog) = $gas.overflowing_sub(block.gas);
+        $gas = newgas;
+        if !oog {
+            ()
+        } else {
+            $error = VmError::OutOfGas;
+            break;
+        }
+    };
+}
+
 pub struct RunResult {
     pub offset: u64,
     pub size: u64,
@@ -1705,6 +1709,7 @@ pub unsafe fn run_pex_tier1(
     let instrs: *const u64 = pex.text_ptr();
     let blocks: *const BlockInfo = pex.block_infos_ptr();
     let mut pc: usize = 0;
+    let mut fall_addr: u16 = 0;
     let mut gas: u64 = gas_limit.low_u64();
     let mut error: VmError = VmError::None;
     let mut ret_slice = (0, 0);
@@ -1713,11 +1718,12 @@ pub unsafe fn run_pex_tier1(
     // println!("sp:   0x{:#016x}", sp as usize);
     // println!("imms: 0x{:#016x}", imms as usize);
     //println!("running...");
-    // while !entered {
-    //     entered = true;
-    //     //check_exception_at!(0, gas, rom, stack, error);
-    //     return ReturnData::new(0, 0, gas, error);
-    // }
+    while !entered {
+        entered = true;
+        let block = *blocks.offset(0);
+        meter_gas_at!(0, gas, blocks, error);
+        fall_addr = block.fall_addr;
+    }
     loop {
         let instr = *instrs.offset(pc as isize);
         let opcode: Opcode = Opcode { 0: (instr & 0xff) as u8 };
@@ -1907,17 +1913,24 @@ pub unsafe fn run_pex_tier1(
                 comment!("opJUMPV");
                 let (tgt, _) = decode_ts!(instr, sp, imms);
                 let block = *blocks.offset(tgt as isize);
+                meter_gas_at!(tgt, gas, blocks, error);
                 pc = block.start_addr.1 as usize;
+                fall_addr = block.fall_addr;
             }
             Opcode::JUMPIV => {
                 comment!("opJUMPIV");
                 let (tgt, src) = decode_ts!(instr, sp, imms);
                 let a = load_u256(src, 0);
                 if is_zero_u256(a) {
+                    let block = *blocks.offset(fall_addr as isize);
+                    meter_gas_at!(block.start_addr.0, gas, blocks, error);
                     pc += 1;
+                    fall_addr = block.fall_addr;
                 } else {
+                    meter_gas_at!(tgt, gas, blocks, error);
                     let block = *blocks.offset(tgt as isize);
                     pc = block.start_addr.1 as usize;
+                    fall_addr = block.fall_addr;
                 }
             }
             Opcode::RETURN => {
@@ -1937,6 +1950,7 @@ pub unsafe fn run_pex_tier1(
             _ => break,
         }
     }
+    println!("gas: {}", gas);
 
     return RunResult {
         offset: ret_slice.0,

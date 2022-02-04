@@ -56,7 +56,7 @@ mod tests {
         let word = unsafe {
             let ret_data = run_evm(&bytes, &rom, &schedule, gas_limit, &mut memory);
             memory
-                .slice(ret_data.offset as isize, ret_data.size)
+                .slice(ret_data.offset as isize, ret_data.size as usize)
                 .to_vec()
         };
         let ref_word = utils::decode_hex(expected).unwrap();
@@ -2780,7 +2780,7 @@ mod tests {
             Fork::Berlin
         );
     }
-    
+
     // 1023 levels of subroutines
     #[test]
     fn opcode_jumpsub_3() {
