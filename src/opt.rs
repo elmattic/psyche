@@ -1114,6 +1114,28 @@ impl StaticStack {
                 }
             });
 
+        // We need to determine if the last instruction breaks the control
+        // flow, if yes then we can't just push back the regularization
+        // instruction(s) (to patch the stack and/or stack pointer)
+        let save = |instrs: &mut Vec<Instr>| {
+            if let Some(instr) = instrs.last() {
+                match instr.opcode {
+                    Opcode::JUMP | Opcode::JUMPI | Opcode::JUMPV | Opcode::JUMPIV
+                    | Opcode::RETURN => instrs.pop(),
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        };
+        let restore = |instrs: &mut Vec<Instr>, to_push: Option<Instr>| {
+            if let Some(instr) = to_push {
+                instrs.push(instr);
+            }
+        };
+
+        let x = save(instrs);
+
         loop {
             let s0 = sets.next();
             let s1 = sets.next();
@@ -1130,6 +1152,9 @@ impl StaticStack {
             }
         }
 
+        // Restore the control flow instruction
+        restore(instrs, x);
+
         if diff != 0 {
             // We need to store in the last instruction of the block the stack
             // pointer offset
@@ -1139,6 +1164,20 @@ impl StaticStack {
                 true
             };
             if push_set1 {
+                // We can't handle this situation right now and therefore must
+                // assert, iow we should always be able to fit sp_offset in
+                // those instructions
+                let ctrl_flow = if let Some(instr) = instrs.last() {
+                    match instr.opcode {
+                        Opcode::JUMP | Opcode::JUMPI | Opcode::JUMPV | Opcode::JUMPIV
+                        | Opcode::RETURN => true,
+                        _ => false,
+                    }
+                } else {
+                    false
+                };
+                assert!(!ctrl_flow);
+
                 instrs.push(Instr::set1(
                     Argument::Input { id: 0, address: 0},
                     Argument::Input { id: 0, address: 0},
