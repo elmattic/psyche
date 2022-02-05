@@ -677,15 +677,17 @@ impl<'a> fmt::Display for InstrWithConsts<'a> {
             match opr {
                 Operand::Immediate { index } => {
                     let value = self.consts[*index as usize];
-                    write!(f, "{}, ", value.0[0]);
+                    write!(f, "${}, ", value.0[0]);
                 },
                 Operand::Address { offset, ret: _ } => {
-                    write!(f, "%{:+}, ", offset);
+                    write!(f, "@{:+}, ", offset);
                 },
                 Operand::JumpDest { addr } => {
                     write!(f, "{:02x}h, ", addr);
                 },
-                _ => panic!("only immediate, address or jumpdest are valid")
+                Operand::Temporary { id, ret:_ } => {
+                    write!(f, "r{}, ", id);
+                },
             }
         }
         let sp_offset = self.instr.sp_offset;
@@ -960,6 +962,7 @@ impl StaticStack {
 
     fn alloc_stack_slots(
         &mut self,
+        imms: &[U256],
         instrs: &mut [Instr],
         instr_len: usize,
         block_info: &BlockInfo,
@@ -967,10 +970,12 @@ impl StaticStack {
         // for arg in stack.args.iter() {
         //     println!(">> {:?}", arg);
         // }
-        // for instr in instrs.iter() {
-        //     println!("{}", Instr::with_imms(instr, &consts));
-        // }
-        let print_log = false;
+        let print_log = true;
+        if print_log {
+            for instr in instrs.iter() {
+                println!("{}", Instr::with_imms(instr, &imms));
+            }
+        }
 
         let diff = self.len() as isize - self.size() as isize;
         //println!("diff: {}", diff);
@@ -1380,8 +1385,10 @@ pub fn build_super_instructions(
 
     let mut block_offset: isize = 0;
     for i in 0..block_infos.len() {
-        //println!("\n==== block #{} ====", i);
+        println!("\n==== block #{} ====", i);
         let block_info = block_infos[i];
+        println!("{:?}", block_info);
+
         let block_len = if i < (block_infos.len()-1) {
             let next_block_info = block_infos[i+1];
             next_block_info.start_addr.0 - block_info.start_addr.0
@@ -1389,13 +1396,25 @@ pub fn build_super_instructions(
             bytecode.len() as u16 - block_info.start_addr.0
         } as isize;
 
+        let mut offset: isize = 0;
+        while offset < block_len {
+            let opcode = bytecode[(block_offset + offset) as usize];
+            let opcode = unsafe { std::mem::transmute::<u8, EvmOpcode>(opcode) };
+            println!("{:?}", opcode);
+            if opcode.is_push() {
+                let num_bytes = opcode.push_index() as isize + 1;
+                offset += num_bytes;
+            }
+            offset += 1;
+        }
+
         // build super instructions
         stack.clear(block_info.stack_min_size as usize);
         let block = &bytecode[block_offset as usize..(block_offset + block_len) as usize];
         stack.eval_block(block, valid_jumpdests, imms, instrs);
 
         let block_instr_len = instrs.len() - start_instr;
-        stack.alloc_stack_slots(&mut instrs[start_instr..], block_instr_len, &block_info);
+        stack.alloc_stack_slots(&imms, &mut instrs[start_instr..], block_instr_len, &block_info);
         stack.block_fixup(imms, instrs);
 
         // patch jump addresses and stack diff
@@ -1420,12 +1439,12 @@ pub fn build_super_instructions(
         //     offset += 1;
         // }
 
-        // println!("--");
-        // for instr in &instrs[start_instr..] {
-        //     let ic = Instr::with_imms(instr, &imms);
-        //     println!("{}", ic);
-        // }
-        // println!("--");
+        println!("--");
+        for instr in &instrs[start_instr..] {
+            let ic = Instr::with_imms(instr, &imms);
+            println!("{}", ic);
+        }
+        println!("--");
 
         start_instr = instrs.len();
 
