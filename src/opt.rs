@@ -814,7 +814,16 @@ impl StaticStack {
                 // lifetime end
                 self.rcs.remove(&id);
                 let (_, end) = self.lifetimes.get_mut(&id).unwrap();
-                *end = Some(pc as isize);
+                let is_input = (id as usize) < self.size;
+                if is_input {
+                    if pc == 0 {
+                        *end = Some(pc as isize);
+                    } else {
+                        *end = Some(pc as isize - 1);
+                    }
+                } else {
+                    *end = Some(pc as isize);
+                }
             } else {
                 *v = rc;
             };
@@ -970,7 +979,7 @@ impl StaticStack {
         // for arg in stack.args.iter() {
         //     println!(">> {:?}", arg);
         // }
-        let print_log = true;
+        let print_log = false;
         if print_log {
             for instr in instrs.iter() {
                 println!("{}", Instr::with_imms(instr, &imms));
@@ -1385,9 +1394,9 @@ pub fn build_super_instructions(
 
     let mut block_offset: isize = 0;
     for i in 0..block_infos.len() {
-        println!("\n==== block #{} ====", i);
+        //println!("\n==== block #{} ====", i);
         let block_info = block_infos[i];
-        println!("{:?}", block_info);
+        //println!("{:?}", block_info);
 
         let block_len = if i < (block_infos.len()-1) {
             let next_block_info = block_infos[i+1];
@@ -1396,17 +1405,17 @@ pub fn build_super_instructions(
             bytecode.len() as u16 - block_info.start_addr.0
         } as isize;
 
-        let mut offset: isize = 0;
-        while offset < block_len {
-            let opcode = bytecode[(block_offset + offset) as usize];
-            let opcode = unsafe { std::mem::transmute::<u8, EvmOpcode>(opcode) };
-            println!("{:?}", opcode);
-            if opcode.is_push() {
-                let num_bytes = opcode.push_index() as isize + 1;
-                offset += num_bytes;
-            }
-            offset += 1;
-        }
+        // let mut offset: isize = 0;
+        // while offset < block_len {
+        //     let opcode = bytecode[(block_offset + offset) as usize];
+        //     let opcode = unsafe { std::mem::transmute::<u8, EvmOpcode>(opcode) };
+        //     println!("{:?}", opcode);
+        //     if opcode.is_push() {
+        //         let num_bytes = opcode.push_index() as isize + 1;
+        //         offset += num_bytes;
+        //     }
+        //     offset += 1;
+        // }
 
         // build super instructions
         stack.clear(block_info.stack_min_size as usize);
@@ -1439,12 +1448,12 @@ pub fn build_super_instructions(
         //     offset += 1;
         // }
 
-        println!("--");
-        for instr in &instrs[start_instr..] {
-            let ic = Instr::with_imms(instr, &imms);
-            println!("{}", ic);
-        }
-        println!("--");
+        // println!("--");
+        // for instr in &instrs[start_instr..] {
+        //     let ic = Instr::with_imms(instr, &imms);
+        //     println!("{}", ic);
+        // }
+        // println!("--");
 
         start_instr = instrs.len();
 

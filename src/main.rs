@@ -163,17 +163,17 @@ fn evm(bytecode: &Vec<u8>, fork: Fork, gas_limit: U256) {
             //}
         }
         println!("{:?}", ret_data.error);
-        println!("gas: {}", ret_data.gas);
     }
     // let mut rom = VmRom::new();
     // rom.init(&bytecode, &schedule);
     // let mut memory = VmMemory::new();
     // memory.init(gas_limit);
-    // let (err, slice) = unsafe {
+    // let (err, slice, gas) = unsafe {
     //     let ret_data = run_evm(&bytecode, &rom, &schedule, gas_limit, &mut memory);
     //     (
     //         ret_data.error,
     //         memory.slice(ret_data.offset as isize, ret_data.size as usize),
+    //         ret_data.gas,
     //     )
     // };
     // if err != VmError::None {
@@ -185,6 +185,7 @@ fn evm(bytecode: &Vec<u8>, fork: Fork, gas_limit: U256) {
     //     let _ = write!(buffer, "{:02x}", byte);
     // }
     // println!("0x{:}", buffer);
+    // println!("gas: {}", gas);
 }
 
 fn asm(filename: &str) {

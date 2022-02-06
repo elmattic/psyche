@@ -472,11 +472,13 @@ impl VmMemory {
     unsafe fn read(&mut self, offset: u64) -> U256 {
         let src = self.ptr.offset(offset as isize);
         let result = bswap_u256(loadu_u256(src as *const U256, 0));
+        //println!("reading {} <- [{}]", result.0[0], offset);
         return result;
     }
 
     unsafe fn write(&mut self, offset: u64, value: U256) {
         let dest = self.ptr.offset(offset as isize);
+        //println!("writing [{}]={}", offset, value.0[0]);
         storeu_u256(dest as *mut U256, bswap_u256(value), 0);
     }
 
@@ -1873,10 +1875,28 @@ pub unsafe fn run_pex_tier1(
                 unimplemented!()
             },
             Opcode::JUMP => {
-                unimplemented!()
+                comment!("opJUMP");
+                let (tgt, _) = decode_ts!(instr, sp, imms);
+                let block = *blocks.offset(tgt as isize);
+                meter_gas_at!(tgt, gas, blocks, error);
+                pc = block.start_addr.1 as usize;
+                fall_addr = block.fall_addr;
             }
             Opcode::JUMPI => {
-                unimplemented!()
+                comment!("opJUMPI");
+                let (tgt, src) = decode_ts!(instr, sp, imms);
+                let a = load_u256(src, 0);
+                if is_zero_u256(a) {
+                    let block = *blocks.offset(fall_addr as isize);
+                    meter_gas_at!(block.start_addr.0, gas, blocks, error);
+                    pc += 1;
+                    fall_addr = block.fall_addr;
+                } else {
+                    meter_gas_at!(tgt, gas, blocks, error);
+                    let block = *blocks.offset(tgt as isize);
+                    pc = block.start_addr.1 as usize;
+                    fall_addr = block.fall_addr;
+                }
             }
             Opcode::PC => {
                 unimplemented!()
