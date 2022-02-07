@@ -1876,24 +1876,28 @@ pub unsafe fn run_pex_tier1(
             },
             Opcode::JUMP => {
                 comment!("opJUMP");
-                let (tgt, _) = decode_ts!(instr, sp, imms);
-                let block = *blocks.offset(tgt as isize);
-                meter_gas_at!(tgt, gas, blocks, error);
+                let (src, _) = decode_ss!(instr, sp, imms);
+                let tgt = load_u256(src, 0);
+                // TODO: validate target address
+                let block = *blocks.offset(tgt.low_u64() as isize);
+                meter_gas_at!(tgt.low_u64(), gas, blocks, error);
                 pc = block.start_addr.1 as usize;
                 fall_addr = block.fall_addr;
             }
             Opcode::JUMPI => {
                 comment!("opJUMPI");
-                let (tgt, src) = decode_ts!(instr, sp, imms);
-                let a = load_u256(src, 0);
+                let (src0, src1) = decode_ss!(instr, sp, imms);
+                let a = load_u256(src1, 0);
                 if is_zero_u256(a) {
                     let block = *blocks.offset(fall_addr as isize);
                     meter_gas_at!(block.start_addr.0, gas, blocks, error);
                     pc += 1;
                     fall_addr = block.fall_addr;
                 } else {
-                    meter_gas_at!(tgt, gas, blocks, error);
-                    let block = *blocks.offset(tgt as isize);
+                    let tgt = load_u256(src0, 0);
+                    // TODO: validate target address
+                    let block = *blocks.offset(tgt.low_u64() as isize);
+                    meter_gas_at!(tgt.low_u64(), gas, blocks, error);
                     pc = block.start_addr.1 as usize;
                     fall_addr = block.fall_addr;
                 }
