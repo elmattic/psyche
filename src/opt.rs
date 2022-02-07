@@ -21,6 +21,7 @@ use crate::u256;
 use crate::u256::U256;
 use crate::vm::OPCODE_INFOS;
 use crate::vm::VmRom;
+use crate::utils::encode_hex;
 
 use std::collections::{HashMap};
 use std::convert::From;
@@ -981,8 +982,8 @@ impl StaticStack {
         // }
         let print_log = false;
         if print_log {
-            for instr in instrs.iter() {
-                println!("{}", Instr::with_imms(instr, &imms));
+            for (i, instr) in instrs.iter().enumerate() {
+                println!("{:02}: {}", i, Instr::with_imms(instr, &imms));
             }
         }
 
@@ -1054,7 +1055,7 @@ impl StaticStack {
             for v in &mut sorted_lifetimes[start_idx..] {
                 let (start, end, id, is_input, addr) = *v;
                 if pc == end {
-                    if print_log { println!("{}{} has reach end of life, its address @{} is available for writing",
+                    if print_log { println!("{}{} has reached end of life, its address @{} is available for writing",
                         if is_input { "i" } else { "r" }, id, addr) };
                     assert!(!free_slots.contains(&addr), "@{} is present in free slots", addr);
                     free_slots.push(addr);
@@ -1409,10 +1410,15 @@ pub fn build_super_instructions(
         // while offset < block_len {
         //     let opcode = bytecode[(block_offset + offset) as usize];
         //     let opcode = unsafe { std::mem::transmute::<u8, EvmOpcode>(opcode) };
-        //     println!("{:?}", opcode);
         //     if opcode.is_push() {
         //         let num_bytes = opcode.push_index() as isize + 1;
+        //         let start = (block_offset + offset + 1) as usize;
+        //         let end =   (block_offset + offset + 1 + num_bytes) as usize;
+        //         let s = encode_hex(&bytecode[start..end]);
+        //         println!("{:?} 0x{}", opcode, s);
         //         offset += num_bytes;
+        //     } else {
+        //         println!("{:?}", opcode);
         //     }
         //     offset += 1;
         // }
