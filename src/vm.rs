@@ -1913,7 +1913,7 @@ pub unsafe fn run_pex_tier1(
             },
             Opcode::GAS => {
                 let (dst, _) = decode_ds!(instr, sp, imms);
-                let result = U256::default();
+                let result = U256::from_u64(gas);
                 store_u256(dst, result, 0);
                 pc += 1;
             },
