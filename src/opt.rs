@@ -814,17 +814,12 @@ impl StaticStack {
                 // the register is not in use anymore, remove rc and mark
                 // lifetime end
                 self.rcs.remove(&id);
-                let (_, end) = self.lifetimes.get_mut(&id).unwrap();
-                let is_input = (id as usize) < self.size;
-                if is_input {
-                    if pc == 0 {
-                        *end = Some(pc as isize);
-                    } else {
-                        *end = Some(pc as isize - 1);
-                    }
+                let (start, end) = self.lifetimes.get_mut(&id).unwrap();
+                *end = if *start != pc {
+                    Some(pc as isize)
                 } else {
-                    *end = Some(pc as isize);
-                }
+                    Some(pc as isize + 1)
+                };
             } else {
                 *v = rc;
             };
@@ -908,7 +903,7 @@ impl StaticStack {
         imms: &mut Vec<U256>,
         instrs: &mut Vec<Instr>,
     ) {
-        let mut block_pc = 0;
+        let mut block_pc = -1;
         let mut i = 0;
         while i < bytecode.len() {
             let opcode = unsafe { std::mem::transmute::<_, EvmOpcode>(bytecode[i]) };
@@ -936,8 +931,8 @@ impl StaticStack {
                 ()
             } else {
                 // handle non-stack opcodes
-                let res = self.eval_opcode(opcode, valid_jumpdests, block_pc, imms);
                 block_pc += 1;
+                let res = self.eval_opcode(opcode, valid_jumpdests, block_pc, imms);
                 if let Ok(instr) = res {
                     instrs.push(instr);
                 } else {
@@ -1010,9 +1005,9 @@ impl StaticStack {
 
         //Self::print_lifetimes(self, instr_len);
 
-        let end_pc = instr_len as isize -1;
+        let end_pc = instr_len as isize;
         //println!("lifetimes:");
-        let mut sorted_lifetimes: Vec<(isize, isize, u16, bool, i16)> = vec!();
+        let mut sorted_lifetimes: Vec<(isize, isize, u16, bool, Option<i16>)> = vec!();
         for (k, v) in &self.lifetimes {
             let id = k;
             let (start, end) = v;
@@ -1022,10 +1017,9 @@ impl StaticStack {
                 let size = block_info.stack_min_size as i16;
                 //println!("size {}", size);
                 let addr = (*id as isize - size as isize) as i16;
-                //let address = (i as isize - size as isize) as i16;
-                addr
+                Some(addr)
             } else {
-                std::i16::MAX as i16
+                None
             };
             sorted_lifetimes.push((*start, end, *id, is_input, addr));
         }
@@ -1055,6 +1049,7 @@ impl StaticStack {
             for v in &mut sorted_lifetimes[start_idx..] {
                 let (start, end, id, is_input, addr) = *v;
                 if pc == end {
+                    let addr = addr.expect(&format!("unallocated register {}{}", if is_input { "i" } else { "r" }, id));
                     if print_log { println!("{}{} has reached end of life, its address @{} is available for writing",
                         if is_input { "i" } else { "r" }, id, addr) };
                     assert!(!free_slots.contains(&addr), "@{} is present in free slots", addr);
@@ -1075,7 +1070,7 @@ impl StaticStack {
                             if print_log { println!("found free @{}", addr) };
                             addr
                         };
-                        v.4 = addr;
+                        v.4 = Some(addr);
                     }
                 }
             }
@@ -1091,7 +1086,7 @@ impl StaticStack {
                         let res = sorted_lifetimes.iter().find(|&tu| tu.2 == id);
                         let (_,_,_,_,addr) = res.unwrap();
                         *opr = Operand::Address {
-                            offset: *addr,
+                            offset: (*addr).unwrap(),
                             ret,
                         };
                     },
