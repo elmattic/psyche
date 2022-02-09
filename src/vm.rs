@@ -1915,7 +1915,10 @@ pub unsafe fn run_pex_tier1(
                 let (dst, _) = decode_ds!(instr, sp, imms);
                 let result = U256::from_u64(gas);
                 store_u256(dst, result, 0);
+                let block = *blocks.offset(fall_addr as isize);
+                meter_gas_at!(block.start_addr.0, gas, blocks, error);
                 pc += 1;
+                fall_addr = block.fall_addr;
             },
             Opcode::SET1 => {
                 comment!("opSET1");
