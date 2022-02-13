@@ -472,13 +472,13 @@ impl VmMemory {
     unsafe fn read(&mut self, offset: u64) -> U256 {
         let src = self.ptr.offset(offset as isize);
         let result = bswap_u256(loadu_u256(src as *const U256, 0));
-        //println!("reading {} <- [{}]", result.0[0], offset);
+        //println!("reading {} <- [{}]", result.0[0], offset / 32);
         return result;
     }
 
     unsafe fn write(&mut self, offset: u64, value: U256) {
         let dest = self.ptr.offset(offset as isize);
-        //println!("writing [{}]={}", offset, value.0[0]);
+        //println!("writing [{}]={}", offset / 32, value.0[0]);
         storeu_u256(dest as *mut U256, bswap_u256(value), 0);
     }
 
@@ -1883,7 +1883,7 @@ pub unsafe fn run_pex_tier1(
                 meter_gas_at!(tgt.low_u64(), gas, blocks, error);
                 pc = block.start_addr.1 as usize;
                 fall_addr = block.fall_addr;
-            }
+            },
             Opcode::JUMPI => {
                 comment!("opJUMPI");
                 let (src0, src1) = decode_ss!(instr, sp, imms);
@@ -1901,10 +1901,10 @@ pub unsafe fn run_pex_tier1(
                     pc = block.start_addr.1 as usize;
                     fall_addr = block.fall_addr;
                 }
-            }
+            },
             Opcode::PC => {
                 unimplemented!()
-            }
+            },
             Opcode::MSIZE => {
                 let (dst, _) = decode_ds!(instr, sp, imms);
                 let result = U256::from_u64(memory.size() as u64);
@@ -1922,7 +1922,7 @@ pub unsafe fn run_pex_tier1(
             },
             Opcode::MADD => {
                 unimplemented!()
-            }
+            },
             Opcode::SET1 => {
                 comment!("opSET1");
                 let (dst, src) = decode_ds!(instr, sp, imms);
@@ -1946,7 +1946,7 @@ pub unsafe fn run_pex_tier1(
                 meter_gas_at!(tgt, gas, blocks, error);
                 pc = block.start_addr.1 as usize;
                 fall_addr = block.fall_addr;
-            }
+            },
             Opcode::JUMPIV => {
                 comment!("opJUMPIV");
                 let (tgt, src) = decode_ts!(instr, sp, imms);
@@ -1962,7 +1962,7 @@ pub unsafe fn run_pex_tier1(
                     pc = block.start_addr.1 as usize;
                     fall_addr = block.fall_addr;
                 }
-            }
+            },
             Opcode::RETURN => {
                 comment!("opRETURN");
                 let (src0, src1) = decode_ss!(instr, sp, imms);

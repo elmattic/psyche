@@ -487,11 +487,25 @@ struct InstrWithConsts<'a> {
     consts: &'a [U256],
 }
 
+struct InstrWithConstsAndBlockInfos<'a> {
+    instr: &'a Instr,
+    consts: &'a [U256],
+    blocks: &'a [BlockInfo],
+}
+
 impl Instr {
     fn with_imms<'a>(instr: &'a Instr, consts: &'a [U256]) -> InstrWithConsts<'a> {
         InstrWithConsts {
             instr,
             consts,
+        }
+    }
+
+    fn with_imms_and_block_infos<'a>(instr: &'a Instr, consts: &'a [U256], blocks: &'a[BlockInfo]) -> InstrWithConstsAndBlockInfos<'a> {
+        InstrWithConstsAndBlockInfos {
+            instr,
+            consts,
+            blocks,
         }
     }
 
@@ -694,6 +708,47 @@ impl<'a> fmt::Display for InstrWithConsts<'a> {
         let sp_offset = self.instr.sp_offset;
         if sp_offset != 0 {
             write!(f, "({:+})", sp_offset);
+        }
+        res
+    }
+}
+
+impl<'a> fmt::Display for InstrWithConstsAndBlockInfos<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let s = self.instr.opcode.mnemonic();
+        let res = write!(f, "{:<8} ", s);
+
+        for (i, opr) in self.instr.operands.iter().enumerate() {
+            match opr {
+                Operand::Immediate { index } => {
+                    let value = self.consts[*index as usize];
+                    write!(f, "${}", value.0[0]);
+                },
+                Operand::Address { offset, ret: _ } => {
+                    write!(f, "@{:+}", offset);
+                },
+                Operand::JumpDest { addr } => {
+                    let mut instr_addr = 0;
+                    // TODO: use binary search
+                    for b in self.blocks {
+                        if *addr as u16 == b.start_addr.0 {
+                            instr_addr = b.start_addr.1 * 8;
+                            break;
+                        }
+                    }
+                    write!(f, "{:02x}h", instr_addr);
+                },
+                Operand::Temporary { id, ret:_ } => {
+                    write!(f, "r{}", id);
+                },
+            }
+            if i != self.instr.operands.len()-1 {
+                write!(f, ", ");
+            }
+        }
+        let sp_offset = self.instr.sp_offset;
+        if sp_offset != 0 {
+            write!(f, " ({:+})", sp_offset);
         }
         res
     }
@@ -1462,8 +1517,10 @@ pub fn build_super_instructions(
     }
 
     println!("");
+    let mut addr = 0;
     for instr in instrs.iter() {
-        let ic = Instr::with_imms(instr, &imms);
-        println!("{}", ic);
+        let ic = Instr::with_imms_and_block_infos(instr, &imms, &block_infos);
+        println!("0x{:04x}: {}", addr, ic);
+        addr += instr.len() * 8;
     }
 }
