@@ -517,6 +517,16 @@ impl Instr {
         }
     }
 
+    fn setsp(diff: isize, imms: &mut Vec<U256>) -> Instr {
+        let mut x = Instr::set1(
+            Argument::Input { id: 0, address: 0},
+            Argument::Input { id: 0, address: 0},
+            imms,
+        );
+        x.sp_offset = diff as i16;
+        x
+     }
+
     fn new(
         opcode: EvmOpcode,
         valid_jumpdests: *const u64,
@@ -1151,7 +1161,12 @@ impl StaticStack {
         }
     }
 
-    fn block_fixup(&mut self, imms: &mut Vec<U256>, instrs: &mut Vec<Instr>) {
+    fn block_fixup(
+        &mut self,
+        imms: &mut Vec<U256>,
+        instrs: &mut Vec<Instr>,
+        instr_len: usize,
+    ) {
         let diff = self.len() as isize - self.size() as isize;
         let mut sets = self.args
             .iter()
@@ -1180,10 +1195,12 @@ impl StaticStack {
             });
 
         // We need to determine if the last instruction breaks the control
-        // flow, if yes then we can't just push back the regularization
-        // instruction(s) (to patch the stack and/or stack pointer)
-        let save = |instrs: &mut Vec<Instr>| {
-            if let Some(instr) = instrs.last() {
+        // flow, if true then we can't just push back the regularization
+        // instructions and need to insert them just before
+        let x =
+            if instr_len > 0 {
+                // Block produced one or several instructions
+                let instr = instrs.last().unwrap();
                 match instr.opcode {
                     Opcode::JUMP | Opcode::JUMPI | Opcode::JUMPV | Opcode::JUMPIV
                     | Opcode::RETURN => instrs.pop(),
@@ -1191,15 +1208,7 @@ impl StaticStack {
                 }
             } else {
                 None
-            }
-        };
-        let restore = |instrs: &mut Vec<Instr>, to_push: Option<Instr>| {
-            if let Some(instr) = to_push {
-                instrs.push(instr);
-            }
-        };
-
-        let x = save(instrs);
+            };
 
         loop {
             let s0 = sets.next();
@@ -1218,39 +1227,22 @@ impl StaticStack {
         }
 
         // Restore the control flow instruction
-        restore(instrs, x);
+        if let Some(instr) = x {
+            instrs.push(instr);
+        }
 
-        if diff != 0 {
-            // We need to store in the last instruction of the block the stack
-            // pointer offset
-            let push_set1 = if let Some(instr) = instrs.last_mut() {
-                instr.opcode.sp_offset_bits() < 11
+        // Now let's fixup stack pointer
+        if (diff > 0) | (diff < 0) {
+            // We need to patch sp and store it in the last instruction
+            if instr_len > 0 {
+                // Store sp_offset into the last instruction
+                let instr: &mut Instr = instrs.last_mut().unwrap();
+                assert!(instr.opcode.sp_offset_bits() >= 11);
+                instr.sp_offset = diff as i16;
             } else {
-                true
-            };
-            if push_set1 {
-                // We can't handle this situation right now and therefore must
-                // assert, iow we should always be able to fit sp_offset in
-                // those instructions
-                let ctrl_flow = if let Some(instr) = instrs.last() {
-                    match instr.opcode {
-                        Opcode::JUMP | Opcode::JUMPI | Opcode::JUMPV | Opcode::JUMPIV
-                        | Opcode::RETURN => true,
-                        _ => false,
-                    }
-                } else {
-                    false
-                };
-                assert!(!ctrl_flow);
-
-                instrs.push(Instr::set1(
-                    Argument::Input { id: 0, address: 0},
-                    Argument::Input { id: 0, address: 0},
-                    imms,
-                ));
+                // No new instructions generated so just push a setsp
+                instrs.push(Instr::setsp(diff, imms));
             }
-            let instr: &mut Instr = instrs.last_mut().unwrap();
-            instr.sp_offset = diff as i16;
         }
     }
 }
@@ -1480,7 +1472,7 @@ pub fn build_super_instructions(
 
         let block_instr_len = instrs.len() - start_instr;
         stack.alloc_stack_slots(&imms, &mut instrs[start_instr..], block_instr_len, &block_info);
-        stack.block_fixup(imms, instrs);
+        stack.block_fixup(imms, instrs, block_instr_len);
 
         // patch jump addresses and stack diff
         let block_info = &mut block_infos[i];

@@ -472,13 +472,13 @@ impl VmMemory {
     unsafe fn read(&mut self, offset: u64) -> U256 {
         let src = self.ptr.offset(offset as isize);
         let result = bswap_u256(loadu_u256(src as *const U256, 0));
-        //println!("reading {} <- [{}]", result.0[0], offset / 32);
+        //println!("reading {} <- [{}]", result.0[0], offset);
         return result;
     }
 
     unsafe fn write(&mut self, offset: u64, value: U256) {
         let dest = self.ptr.offset(offset as isize);
-        //println!("writing [{}]={}", offset / 32, value.0[0]);
+        //println!("writing [{}]={}", offset, value.0[0]);
         storeu_u256(dest as *mut U256, bswap_u256(value), 0);
     }
 
